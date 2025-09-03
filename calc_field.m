@@ -11,6 +11,7 @@ function [R, coilGm, airGm] = calc_field(currentDensity, geometry, options)
     if ~isfield(options, 'rotation'), options.rotation = struct(); end
     if ~isfield(options.rotation, 'theta'), options.rotation.theta = 0; end
     if ~isfield(options.rotation, 'beta'), options.rotation.beta = 0; end
+    if ~isfield(options.rotation, 'phi'), options.rotation.phi = 0; end
     if ~isfield(options, 'translation'), options.translation = struct(); end
     if ~isfield(options.translation, 'x'), options.translation.x = 0; end
     if ~isfield(options.translation, 'y'), options.translation.y = 0; end
@@ -23,9 +24,10 @@ function [R, coilGm, airGm] = calc_field(currentDensity, geometry, options)
     airHeight = geometry.airHeight;   
     coilGm = multicylinder([coilRin, coilRout], coilHeight, Void=[1 0]);
     airGm = multicylinder(airR, airHeight);
+    coilGm = rotate(coilGm, options.rotation.theta, [0, 0, coilHeight], [1e-3, 0, coilHeight]);
+    coilGm = rotate(coilGm, options.rotation.beta, [0,0,coilHeight], [0,1e-3,coilHeight]);
+    coilGm = rotate(coilGm, options.rotation.phi, [0,0,coilHeight], [0,0,coilHeight+1e-3]);
     coilGm = translate(coilGm, [options.translation.x, options.translation.y, airHeight/2 - coilHeight/2 + options.translation.z]);
-    coilGm = rotate(coilGm, options.rotation.theta, [0, 0, coilHeight], [1,0,coilHeight]);
-    coilGm = rotate(coilGm, options.rotation.beta, [0,0,coilHeight], [0,1,coilHeight]);
 
     if options.plot
         gm = addCell(airGm, coilGm);

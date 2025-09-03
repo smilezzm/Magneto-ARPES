@@ -33,6 +33,8 @@ geometry.airR = airR;
 geometry.airHeight = airHeight;
 fieldOptions.plot = true;
 fieldOptions.rotation.theta = 0 * 180 / pi ;
+fieldOptions.rotation.beta = 0 * 180 / pi;
+fieldOptions.rotation.phi = 0 * 180 / pi;
 [R, coilGm, airGm] = calc_field(currentDensity, geometry, fieldOptions);
 
 %% --- Build magnetic field interpolants (choose region of interest) ---
