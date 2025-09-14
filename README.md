@@ -1,5 +1,5 @@
-# Python Codes
-Different from Matlab parts, it's assumed that the sample be put at $(0,0,0)$， while calculating the field through **elliptic integration**，and integrating the motion of electrons through **Boris pusher algorithms**.
+# Python Codes (toy model)
+Assuming that the sample be put at $(0,0,0)$， while calculating the field through **elliptic integration**，and integrating the motion of electrons through **Boris pusher algorithms**.
 
 ## magnetoarpes.py
 This file contains a `MagnetoARPES` class, which integrates all the functions needed during simulation: 
@@ -13,64 +13,29 @@ This file builds an instance of `MagnetoARPES` and shows how some functions work
 ![](./figures/plot_k_mapping.png)
 
 # Matlab Codes
-The codes are basically equivalent to python programs.
+## Workflow
+![](./figures/workflow.png)
+## calc_standard_field.m
+Calculate the filed, given the real geometry (coil, core, shield), with no translation or rotation， which means the geometry is normal at the center， and with a current of 0.2A. 
 
-Different from python parts, matlab codes here calculate the field through Finite Element Method (**FEM**) and integrate the motion of electrons through Ordinary Differential Equation (**ODE**). 
+The result is stored as some values on grids. `R=solve(model)` cannot be stored because when you load it next time and interpolate the field value at some points, it will generate incorrect results, different from the `R` directly solved.
 
-Therefore, the geometry also differs: an air cylinder is set, whose bottom reaches $z=0$, the sample is put at $(0,0,\frac{\text{airHeight}}{2}+\frac{\text{coilHeight}}{2})$.
+The grid data is stroed in `standard_field.mat`
 
-## calc_field.m
-[calc_field.m](./calc_field.m) is a function.
-It computes the magnetic field with certain position of he coil, 
-assuming the sample is on xy plane, at $ z = \frac{\text{airHeight}}{2}+\frac{\text{coilHeight}}{2}$ 
-and the coil is translated and rotated around the point $(0,0,\frac{\text{airHeight}}{2}+\frac{\text{coilHeight}}{2})$.
+## calc_inverse_mapping.m
+Given certain parameters (current of $x$ mA, some translation and rotation), derive the field from standard field. And build an inverse mapping from finally received kx-ky to from initial kx-ky. 
 
-![](./figures/geometry_overall.png)
+The field interpolant at this parameters and inverse mapping are stored in `inverse_mapping.mat`.
 
-In the figure above, the outermost cylinder is boundary of the system while the inner cylinder is the coil.
+## read_bin
+Read the data obtained by ARPES, stored in .bin files.
 
-## example_calc_trajectory.m
-[example_calc_trajectory.m](./example_calc_trajectory.m) is a script to generate and plot a single trajectory of an emitting electron from the center of the top of the coil, with no translation or rotation.
+## try_forward_mapping.m
+For a standard experiment, a material **whose band is not affected** by $\bm{B}$ is used. Fermi surface at $I=0$ mA and $I=x$ mA are measured. 
 
-![](./figures/example_trajectory1.png)
+The Fermi surface at $I=0$ mA is put into this script to get a simulated received band at $I=x$ mA, with the parameters set in `calc_reverse_mapping.m`. 
 
-Anyway, it is <big><big>useless</big></big>...
+Then we can adjust the parameters in `calc_reverse_mapping.m` to make the simulated band more similar to the real $I=x$ mA band.
 
-## backward_calc.m
-[backward_calc.m](./backward_calc.m) is a function to calculate the initial velocity of an electron, given its outcoming position and outcoming velocity. 
-
-It generates a virtual electron with $+e$ charge and put it with the opposite speed from the endpoint, and integrate its motion until the virtual electron hits initial xy plane, therefore getting the initial velocity. 
-
-However, although we know the velocity of elctrons entering the lens, we cannot determine the position of electrons entering the lens. Thus this function hasn't been used yet.
-
-![](./figures/configuration_of_ARPES2.png)
-
-As can be seen in this configuration picture of ARPES, electrons enter the lens through a large entrance area.
-
-## calc_faked_initial.m
-[calc_faked_inital.m](./calc_faked_initial.m) is a function with many options:
-1. The basic aim is to find the trajectory of an emitting electron and velocity at each point on it.
-2. Get the faked initial point of an outcoming electron, by extending the final velocity in an opposite direction.
-3. See whether the electron enters the slit. However, there is a lens (DA) before the slit, so this option is meaningless.
-4. Choose to polt the geometry, trajectory, reversely extended line from the endpoint, and the position of slit.
-
-Anyway, this function is also <big><big>useless</big></big>...
-
-## createv0distr.m
-[createv0distr.m](./createv0distr.m) is a function to generate a $(N1,N2,N3,3)$ matrix, which contains $N1*N2*N3$ velocities. 
-
-There are $N3$ energies of electrons, and there are $N1*N2$ in-plane velocities for each energy. 
-
-## many_particle_simulation.m
-[many_particle_simulation.m](./many_particle_simulation.m) is a script that finds all the **outcoming velocities** corresponding to initial velocites generated by [createv0distr.m](./createv0distr.m).
-You can adjust the translation and rotation of the coil relative to the sample. 
-
-For each geometric setting, it not only simulates to get the outcoming velocities, but also build a `invMapCell`. For example, electrons with different in-plane momentum from $N$ different energy have already been simulated. Then there are $N$ slices in invMapCell, each of which gives a 2D interpolation so that one can get initial $(vx0, vy0)$ from outcoming $(vx, vy)$. 
-
-![](./figures/rotated_corresponding.png)
-
-## getInitialVelocity.m
-[getInitialVelocity.m](./getInitialVelocity.m) is a function to obtain initial $(vx0, vy0)$ from outcoming $(vx, vy)$, given certain $E$ (or $|v|$). 
-
-First, it finds the slice in `invMapCell` with the closest $|v|$. 
-And then it gets the initial $(vx0, vy0)$ through interpolation from simulated results.
+## try_backward_mapping.m
+After optimizing the parameters, we can input to `try_backward_mapping.m` another band obtained by ARPES with $I=x$ mA. It will return the corresponding band that eliminates the extrinsic field distortion. 
