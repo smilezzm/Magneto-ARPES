@@ -27,7 +27,7 @@ params.thetax_offset = -24.942574;  % height_offset (Thetax [deg])
 params.thetax_delta  = 0.049935;    % height_delta
 params.thetay_offset = -14.000000;  % depth_offset (Thetay [deg])
 params.thetay_delta  = 0.300000;    % depth_delta
-params.Ef = 16.9;                   % Fermi Level ([eV])
+params.Ef = 16.91;                   % Fermi Level ([eV])
 
 params.energy_label  = 'Energy [eV]';
 params.thetax_label  = 'Thetax [deg]';
@@ -108,14 +108,14 @@ xlabel(params.energy_label); ylabel(params.thetax_label);
 title(sprintf('%s | Thetay = %.3g deg (idx %d)', params.region_name, Ty(iz0), iz0));
 colorbar;
 
-figure('Name','Thetax-Thetay map at a chosen energy','Color','w');
+figure('Name','Thetax-Thetay map at fermi surface','Color','w');
 % Pick energy near the Fermi level
 [~, iw_mid] = min(abs(E - Ef));
 % For Thetax-Thetay we want [Tx x Ty], so take data as [H x W x D] and squeeze along energy
 img_TxTy = squeeze(data_HWD(:, iw_mid, :));  % [H x D]
 imagesc(Ty, Tx, img_TxTy); axis xy;
 xlabel(params.thetay_label); ylabel(params.thetax_label);
-title(sprintf('%s | Energy = %.4f eV (idx %d)', params.region_name, E(iw_mid), iw_mid));
+title(sprintf('%s | Energy = %.3f eV', params.region_name, E(iw_mid)));
 colorbar;
 
 %% Plot the fermi surface as (kx,ky,intensity) (it was (thetax,thetay,intensity) previously)
@@ -125,7 +125,7 @@ hbar = 1.054571817e-34;    % reduced Planck constant [J*s]
 e   = 1.602176634e-19;    % 1 eV in joules
 
 % --- Choose energy slice ---
-targetE = 16.9; % eV, example
+targetE = 16.91; % eV, example
 [~, iw] = min(abs(E - targetE)); % index in your energy axis
 
 % Extract Thetax-Thetay intensity slice
@@ -154,7 +154,7 @@ scatter(kx(:), ky(:), 10, I_thetax_thetay(:), 'filled');
 axis equal tight;
 xlabel('k_x [10^{10} m^{-1}]');
 ylabel('k_y [10^{10} m^{-1}]');
-title(sprintf('ARPES @ E = %.3f eV', targetE));
+title(sprintf('kx-ky @ E = %.3f eV', targetE));
 colormap turbo; colorbar;
 
 save('fermi_surface.mat','kx','ky','I_thetax_thetay','targetE');
