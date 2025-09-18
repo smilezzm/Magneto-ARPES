@@ -31,14 +31,12 @@ The field interpolant at this parameters and inverse mapping are stored in `inve
 Read the data obtained by ARPES, stored in .bin files.
 
 ## tool_forward_mapping.m
-For a standard experiment, a material **whose band is not affected** by $\bm{B}$ is used. Fermi surface at $I=0$ mA and $I=x$ mA are measured. 
+A quick script to *simulate* the received pattern with field on, from *measured* $I=0mA$ pattern. 
 
-The Fermi surface at $I=0$ mA is put into this script to get a simulated received band at $I=x$ mA, with the parameters set in `calc_reverse_mapping.m`. 
-
-Then we can adjust the parameters in `calc_reverse_mapping.m` to make the simulated band more similar to the real $I=x$ mA band.
+It's using the stored field interpolant, given by `calc_inverse_mapping.m`, and the data in `fermi_surface_0mA.mat`.
 
 ## tool_backward_mapping.m
-After optimizing the parameters, we can input to `try_backward_mapping.m` another band obtained by ARPES with $I=x$ mA. It will return the corresponding band that eliminates the extrinsic field distortion. 
+After optimizing the parameters, we can input to `tool_backward_mapping.m` another band obtained by ARPES with $I=x$ mA. It will return the corresponding band that eliminates the extrinsic field distortion. 
 
 ## optimized_parameters.m
 A function that integrates the following process:
