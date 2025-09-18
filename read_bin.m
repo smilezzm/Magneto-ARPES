@@ -1,14 +1,16 @@
 % ARPES loader for SES 3D mapping (Ba122_fmap)
 % Assumes .bin has no header and is float32 (4 bytes), little-endian.
 % Dimensions and axes are taken from your .ini.
-
+% 
+% Don't forget to change the path of .bin before running the script and
+% to change the .mat filename when saving the output data.
 clear; clc;
 
 %% ---------- Parameters from your .ini ----------
 params = struct();
 
 % File
-params.bin_path   = 'D:/yao/Rice University/Academic/magneto ARPES/B0022/Spectrum_Ba122_fmap.bin';
+params.bin_path   = 'D:/yao/Rice University/Academic/magneto ARPES/B0005/Spectrum_Ba122_fmap.bin';
 
 % Dimensions
 params.width      = 618;    % Energy points       [spectrum]/[viewer.region_65.channel_0]
@@ -157,4 +159,4 @@ ylabel('k_y [10^{10} m^{-1}]');
 title(sprintf('kx-ky @ E = %.3f eV', targetE));
 colormap turbo; colorbar;
 
-save('fermi_surface.mat','kx','ky','I_thetax_thetay','targetE');
+save('fermi_surface_0mA.mat','kx','ky','I_thetax_thetay','targetE');
