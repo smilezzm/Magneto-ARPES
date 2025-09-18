@@ -1,153 +1,154 @@
-if exist('coilDout','var')&&exist('coilDin','var')&&...
-        exist('coilHeight','var')&&exist('current','var')&&...
-        exist('X','var')&&exist('Y','var')&&exist('Z','var')&&...
-        exist('Bx','var')&&exist('By','var')&&exist('Bz','var')
-else
-    try
-        load('standard_field.mat');
-    catch
-        error('You should first calculate a "standard" field with calc_standard_field.m');
-    end
-end
-%% Basic values
-hbar = 1.055e-34;
-me = 9.1093837015e-31; % Electron mass (kg)
-e = 1.602176634e-19;  % Elementary charge (C)
-photon_energy = 21.2;
-work_function = 4.29;
-binding_energy = 0.0;
-Energy = photon_energy - work_function - binding_energy;  % in eV
-z_target = 0.01;
-real_current = 0.025;
-field_ratio = real_current / current;  % The basic field is calculated with no translation, no rotation and current of 0.2A.
-gridNum = 100;
-thetax = 0/180*pi;  % radiant
-thetay = 5/180*pi;
-thetaz = 0;
-translationX = 0;
-translationY = 0;
-translationZ = 0;
-
-%% Construct interpolant from the grid value of standard field
-Bxl = griddedInterpolant(X,Y,Z,Bx,'linear','nearest');
-Byl = griddedInterpolant(X,Y,Z,By,'linear','nearest');
-Bzl = griddedInterpolant(X,Y,Z,Bz,'linear','nearest');
-
-%% Build the magnetic field with rotated&translated coil from the field without rotation&translation (stored in R)
-% Also, a field_ratio term is multiplied for the current applied here. 
-% The standard field is calculated based on I=0.2A
-if evalin('base', 'exist(''BFcn'', ''var'')')
-    fprintf('interpolant of real field has been established\n');
-else
-    cx = cos(thetax); sx = sin(thetax);
-    cy = cos(thetay); sy = sin(thetay);
-    cz = cos(thetaz); sz = sin(thetaz);
-    Rx = [1 0 0; 0 cx -sx; 0 sx cx];
-    Ry = [cy 0 sy; 0 1 0; -sy 0 cy];
-    Rz = [cz -sz 0; sz cz 0; 0 0 1];
-    Rot = Rz*Ry*Rx;
-
-    xg = linspace(-coilDout, coilDout, 100);      % global(lab) coordinate range
-    yg = xg;
-    zg = linspace(-coilHeight, z_target, 100);    % mainly care the part that electrons may pass
-    [Xg,Yg,Zg] = ndgrid(xg,yg,zg);  % lab coordinates
+function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters)
+    % The function returns a mapping function that find the (kx,ky) map
+    % when the electrons just came out at the surface of the sample, from
+    % the (kx,ky) map received by ARPES. 
+    % The parameters is an object that contains .transX, .transY, .transZ,
+    % .thetaX, .thetaY, .thetaZ, current, and that is obtained from
+    % optimized_parameters(...)
+    % Output:
+    %   - Fkx: map (kx,ky) onto a kx
+    %   - Fky: map (kx,ky) onto a ky
+    %% Basic values
+    hbar = 1.055e-34;
+    me = 9.1093837015e-31; % Electron mass (kg)
+    e = 1.602176634e-19;  % Elementary charge (C)
+    photon_energy = 21.2;
+    work_function = 4.29;
+    binding_energy = 0.0;
+    Energy = photon_energy - work_function - binding_energy;  % in eV
+    z_target = 0.015;
+    gridNum = 100;
     
-    % Stack into a 3 x (N*M*L) matrix of vectors
-    posStack = [(Xg(:)-translationX)'; (Yg(:)-translationY)'; (Zg(:)-translationZ)'];   % size 3 x (N*M*L)
-    % Apply the 3x3 rotation/transform matrix R
-    positionStackl = Rot' * posStack;                % still 3 x (N*M*L)
-    % Reshape back to N x M x L
-    Xl = reshape(positionStackl(1,:), size(Xg));  % local coordinates (N,M,L)
-    Yl = reshape(positionStackl(2,:), size(Xg));
-    Zl = reshape(positionStackl(3,:), size(Xg));
-    Blx_sample = Bxl(Xl(:),Yl(:),Zl(:));  % Blx_sample size: (N*M*L,1)
-    Bly_sample = Byl(Xl(:),Yl(:),Zl(:));
-    Blz_sample = Bzl(Xl(:),Yl(:),Zl(:));
-    BlStack = [Blx_sample'; Bly_sample'; Blz_sample'];   
-    BgStack = Rot * BlStack * field_ratio;
-    Bxg = griddedInterpolant(Xg, Yg, Zg, reshape(BgStack(1,:), size(Xg)), 'linear', 'nearest');
-    Byg = griddedInterpolant(Xg, Yg, Zg, reshape(BgStack(2,:), size(Xg)), 'linear', 'nearest');
-    Bzg = griddedInterpolant(Xg, Yg, Zg, reshape(BgStack(3,:), size(Xg)), 'linear', 'nearest');
-    BFcn = @(x,y,z) [Bxg(x,y,z); Byg(x,y,z); Bzg(x,y,z)];
-    fprintf('interpolant of real field has been established\n')
-end
-   
-%% build the grid mapping
-fprintf('start building the reverse grid mapping\n')
-if evalin('base', 'exist(''Fkx'', ''var'') && exist(''Fky'', ''var'')')
-    fprintf('reverse grid mapping has been established\n');
-else
-    kx_i = linspace(-0.9,0.9,gridNum);   % in units 1e10 m^(-1)
-    ky_i = linspace(-0.9,0.9,gridNum);
-    k_mag = sqrt(2*me*Energy*e)/hbar/1e10;
+    kx_i = linspace(-0.8,0.8,gridNum);   % in units 1e10 m^(-1)
+    ky_i = linspace(-0.8,0.8,gridNum);
     [kx_i, ky_i] = ndgrid(kx_i, ky_i);
-    k0_valid = true(size(kx_i));
-    for ii = 1:gridNum
-        for jj = 1:gridNum
-            if sqrt(kx_i(ii,jj)^2+ky_i(ii,jj)^2) > 0.4 * k_mag
-                k0_valid(ii,jj) = false;
-            end
-        end
+    k_mag = sqrt(2 * Energy * e * me) / hbar / 1e10;
+    k0_valid = get_valid_mask(kx_i, ky_i, k_mag);
+    kx_i_valid = kx_i(k0_valid);
+    ky_i_valid = ky_i(k0_valid);
+    n_points = length(kx_i_valid);
+    kx_f = zeros(n_points, 1);
+    ky_f = zeros(n_points, 1);
+
+    if n_points < 10
+        error('few valid initial grids');
     end
-    kx_f = zeros(size(kx_i));
-    ky_f = zeros(size(kx_i));
     
-    for ii = 1:gridNum
-        for jj = 1:gridNum
-            if ~k0_valid(ii,jj)
-                kx_f(ii,jj) = NaN;
-                ky_f(ii,jj) = NaN;
-            else
-                vx0 = hbar * kx_i(ii,jj) * 1e10 / me;
-                vy0 = hbar * ky_i(ii,jj) * 1e10 / me;
-                v_final = getFinalVelocity(BFcn, Energy * e, vx0, vy0, z_target);
-                kx_f(ii,jj) = v_final(1) * me / hbar * 1e-10;
-                ky_f(ii,jj) = v_final(2) * me / hbar * 1e-10;
-            end
+    field_interpolants = create_field_interpolants(standard_field);
+    BFcn = create_magnetic_field_function(field_interpolants, parameters);
+    
+    if exist('parfor', 'builtin') && n_points > 100
+        parfor ii = 1:n_points
+            vx0 = hbar * kx_i_valid(ii) * 1e10 / me;
+            vy0 = hbar * ky_i_valid(ii) * 1e10 / me;
+            v_final = getFinalVelocity(BFcn, Energy * e, ...
+                                               vx0, vy0, z_target);
+            kx_f(ii) = v_final(1) * me / hbar * 1e-10;
+            ky_f(ii) = v_final(2) * me / hbar * 1e-10;
+        end
+    else
+        for ii = 1:n_points
+            vx0 = hbar * kx_i_valid(ii) * 1e10 / me;
+            vy0 = hbar * ky_i_valid(ii) * 1e10 / me;
+            v_final = getFinalVelocity(BFcn, Energy * e, ...
+                                               vx0, vy0, z_target);
+            kx_f(ii) = v_final(1) * me / hbar * 1e-10;
+            ky_f(ii) = v_final(2) * me / hbar * 1e-10;
         end
     end
+
     try
-        Fkx = scatteredInterpolant(kx_f(k0_valid), ky_f(k0_valid), kx_i(k0_valid), 'linear', 'nearest');
-        Fky = scatteredInterpolant(kx_f(k0_valid), ky_f(k0_valid), ky_i(k0_valid), 'linear', 'nearest');
+        Fkx = scatteredInterpolant(kx_f, ky_f, kx_i_valid, 'linear', 'nearest');
+        Fky = scatteredInterpolant(kx_f, ky_f, ky_i_valid, 'linear', 'nearest');
     catch ME
         error('Failed to interpolate for this energy slice: %s', ME.message);
     end
     fprintf('reverse grid mapping has been established\n');
+
+    % Plot: initial kx-ky to final kx-ky
+    figure
+    h1 = scatter(kx_i_valid, ky_i_valid, 10, 'b', 'filled', 'MarkerFaceAlpha', 0.6);
+    hold on
+    h2 = scatter(kx_f, ky_f, 10, 'r', 'filled', 'MarkerFaceAlpha', 0.6);
+    xlabel('kx(10^{10} m^{-1})');
+    ylabel('ky(10^{10} m^{-1})');
+    legend([h1, h2], {'Initial kx-ky', 'Predicted final kx-ky'}, 'Location', 'best');
+    title('from initial kx-ky to final kx-ky')
+    grid on
+    set(gcf, 'Color', 'w')  % gcf = get current figure
+    
+    % Plot: final kx-ky to initial kx-ky
+    figure
+    kx_test = linspace(-0.6, 0.6, 15);
+    ky_test = kx_test;
+    [kx_test,ky_test] = meshgrid(kx_test, ky_test);
+    kx_eval = Fkx(kx_test, ky_test);
+    ky_eval = Fky(kx_test, ky_test);
+    h1 = scatter(kx_test(:),ky_test(:),'r','filled','MarkerFaceAlpha',0.6);
+    hold on
+    h2 = scatter(kx_eval(:),ky_eval(:),'b','filled','MarkerFaceAlpha',0.6);
+    xlabel('kx (10^{10} m^{-1})');
+    ylabel('ky (10^{10} m^{-1})');
+    legend([h1, h2], {'Final kx-ky', 'Predicted initial kx-ky'}, 'Location', 'best');
+    title('from final kx-ky to initial kx-ky')
+    set(gcf, 'Color', 'w')  % gcf = get current figure
+    grid on
+    
+    % Store Fkx and Fky, which map (kx,ky) to kx0 and ky0 respectively
+    save('inverse_mapping.mat','BFcn','Fkx','Fky','z_target');
 end
 
-%% Plot: initial kx-ky to final kx-ky
-figure
-h1 = scatter(kx_i(k0_valid), ky_i(k0_valid), 10, 'b', 'filled', 'MarkerFaceAlpha', 0.6);
-hold on
-h2 = scatter(kx_f(k0_valid), ky_f(k0_valid), 10, 'r', 'filled', 'MarkerFaceAlpha', 0.6);
-xlabel('kx(10^{10} m^{-1})');
-ylabel('ky(10^{10} m^{-1})');
-legend([h1, h2], {'Initial kx-ky', 'Predicted final kx-ky'}, 'Location', 'best');
-title('from initial kx-ky to final kx-ky')
-grid on
-set(gcf, 'Color', 'w')  % gcf = get current figure
+function k0_valid = get_valid_mask(kx_standard, ky_standard, k_mag)
+    k0_valid = (kx_standard.^2 + ky_standard.^2) <= (0.4 * k_mag)^2;
+end
 
-%% Plot: final kx-ky to initial kx-ky
-figure
-kx_test = linspace(-0.6, 0.6, 15);
-ky_test = kx_test;
-[kx_test,ky_test] = meshgrid(kx_test, ky_test);
-kx_eval = Fkx(kx_test, ky_test);
-ky_eval = Fky(kx_test, ky_test);
-h1 = scatter(kx_test(:),ky_test(:),'r','filled','MarkerFaceAlpha',0.6);
-hold on
-h2 = scatter(kx_eval(:),ky_eval(:),'b','filled','MarkerFaceAlpha',0.6);
-xlabel('kx (10^{10} m^{-1})');
-ylabel('ky (10^{10} m^{-1})');
-legend([h1, h2], {'Final kx-ky', 'Predicted initial kx-ky'}, 'Location', 'best');
-title('from final kx-ky to initial kx-ky')
-set(gcf, 'Color', 'w')  % gcf = get current figure
-grid on
+function interpolants = create_field_interpolants(standard_field)
+    interpolants = struct();
+    interpolants.Bx = griddedInterpolant(standard_field.X, standard_field.Y, standard_field.Z, ...
+                                        standard_field.Bx, 'linear', 'nearest');
+    interpolants.By = griddedInterpolant(standard_field.X, standard_field.Y, standard_field.Z, ...
+                                        standard_field.By, 'linear', 'nearest');
+    interpolants.Bz = griddedInterpolant(standard_field.X, standard_field.Y, standard_field.Z, ...
+                                        standard_field.Bz, 'linear', 'nearest');
+end
 
-%% Store Fkx and Fky, which map (kx,ky) to kx0 and ky0 respectively
-save('inverse_mapping.mat','BFcn','Fkx','Fky','z_target','real_current');
+function BFcn = create_magnetic_field_function(field_interpolants, parameters)
+    % Extract parameters
+    transX = parameters.transX; transY = parameters.transY; transZ = parameters.transZ;
+    thetaX = parameters.thetaX; thetaY = parameters.thetaY; thetaZ = parameters.thetaZ;
+    current = parameters.current;
+    
+    % Rotation matrices
+    cx = cos(thetaX); sx = sin(thetaX);
+    cy = cos(thetaY); sy = sin(thetaY);
+    cz = cos(thetaZ); sz = sin(thetaZ);
+    Rx = [1 0 0; 0 cx -sx; 0 sx cx];
+    Ry = [cy 0 sy; 0 1 0; -sy 0 cy];
+    Rz = [cz -sz 0; sz cz 0; 0 0 1];
+    Rot = Rz * Ry * Rx;
+    
+    field_ratio = current / 0.2;
+    
+    % Create optimized field function
+    BFcn = @(x, y, z) compute_field_at_point(x, y, z, field_interpolants, ...
+                                           Rot, transX, transY, transZ, field_ratio);
+end
 
-%% Helper function to integrate the trajectory to get the final velocity
+function B = compute_field_at_point(x, y, z, interpolants, Rot, transX, transY, transZ, field_ratio)
+    % Transform coordinates
+    pos_global = [x - transX; y - transY; z - transZ];
+    pos_local = Rot' * pos_global;
+    
+    % Interpolate field in local coordinates
+    Bl = [interpolants.Bx(pos_local(1), pos_local(2), pos_local(3));
+          interpolants.By(pos_local(1), pos_local(2), pos_local(3));
+          interpolants.Bz(pos_local(1), pos_local(2), pos_local(3))];
+    
+    % Transform back to global coordinates
+    B = Rot * Bl * field_ratio;
+end
+
+% Helper function to integrate the trajectory to get the final velocity
 function vxvy = getFinalVelocity(BFcn, Energy, vx0, vy0, z_target)
     % Energy in (J), vx0 and vy0 in (m/s)
     e = 1.602176634e-19;  % Elementary charge (C)
