@@ -45,3 +45,6 @@ A function that integrates the following process:
 3. Optimization to obtain the parameters that make the simulation match the best with the measured result.
 
 Therefore, using the parameters obtained to build the field, we can simulate the electrons and get the information of electrons at the surface of the material. For another unknown sample, this will remove the extrinsic effect from field on electrons, uncovering the intrinsic effect of field on material bands.
+
+## test_overall.m
+Assuming the measured fermi surface of standard sample in 0mA and 30mA are already processed and stored by `read_bin.m`, impose the overall workflow to obtain the inverse(backward) mapping function `Fkx, Fky`.
