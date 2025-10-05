@@ -1,5 +1,5 @@
 function parameters = optimized_parameters(standard_measured, final_measured,...
-    k_r, standard_field, initial_guess, options)
+    k_r, standard_field, initial_guess, similarity_function, options)
     % This function returns the parameters that make the forward simulated
     % fermi surface figure match the best with measured figure, for the
     % "calibrating" sample or "standard" sample. 
@@ -14,11 +14,16 @@ function parameters = optimized_parameters(standard_measured, final_measured,...
     %       .Bx, .By, .Bz, .X, .Y, .Z
     %   - initial_guess: a vector [transX; transY; transZ; thetaX; thetaY; thetaZ; current]
     %   - options: (optional) optimization options structure
+    %   - similarity_function: 'innerProduct' or 'ssim'， which specify the
+    %       function that quantitize similarity
     % Outputs:
     %   - parameters: optimized parameters structure
     
-    if nargin < 6
+    if nargin < 7
         options = struct();
+    end
+    if ~strcmp(similarity_function,'innerProduct') && ~strcmp(similarity_function,'ssim')
+        error('Please assign a similarity_function in ''innerProduct'' and ''ssim'' ');
     end
     
     % Constants
@@ -26,10 +31,8 @@ function parameters = optimized_parameters(standard_measured, final_measured,...
         'hbar', 1.055e-34, ...
         'me', 9.1093837015e-31, ...
         'e', 1.602176634e-19, ...
-        'target_E', 16.91, ...
-        'coilDout', 12e-3, ...
-        'coilHeight', 5.6e-3, ...
-        'z_target', 15e-3);
+        'target_E', 110.56, ...
+        'z_target', 20e-3);
     
     % Extract and validate inputs
     [kx_standard, ky_standard, intensity_standard] = extract_data(standard_measured);
@@ -40,26 +43,39 @@ function parameters = optimized_parameters(standard_measured, final_measured,...
     % Pre-compute k magnitude and valid mask
     k_mag = sqrt(2 * CONSTANTS.target_E * CONSTANTS.e * CONSTANTS.me) / CONSTANTS.hbar / 1e10;
     k0_valid = get_valid_mask(kx_standard, ky_standard, k_mag);
-    
-    % Pre-compute interpolation grid for measured data
-    center_mask = (kx_final.^2 + ky_final.^2 < k_r^2);
-    kx_final_ROI = kx_final(center_mask);
-    ky_final_ROI = ky_final(center_mask);
-    intensity_final_ROI = intensity_final(center_mask);
+    if strcmp(similarity_function, 'innerProduct')
+        % Pre-compute interpolation grid for measured data
+        center_mask = (kx_final.^2 + ky_final.^2 < k_r^2);
+        kx_final_ROI = kx_final(center_mask);
+        ky_final_ROI = ky_final(center_mask);
+        intensity_final_ROI = intensity_final(center_mask); % A vector
+    else
+        kx_ROI = linspace(-k_r,k_r,70);
+        ky_ROI = linspace(-k_r,k_r,70);
+        [kx_ROI,ky_ROI]=ndgrid(kx_ROI,ky_ROI);
+        F_final = scatteredInterpolant(kx_final(:), ky_final(:), intensity_final(:), 'linear', 'none');
+        intensity_final_ROI = F_final(kx_ROI, ky_ROI); % A 2D array
+    end
     
     % Pre-compute field interpolants
     field_interpolants = create_field_interpolants(standard_field);
     
     % Setup optimization
     history = [];
-    objfun = @(p) -calc_similarity_optimized(p, kx_standard, ky_standard, intensity_standard,...
-        kx_final_ROI, ky_final_ROI, intensity_final_ROI, ...
-        field_interpolants, CONSTANTS, k0_valid);
+    if strcmp(similarity_function, 'innerProduct')
+        objfun = @(p) -calc_similarity_innerProduct(p, kx_standard, ky_standard, intensity_standard,...
+            kx_final_ROI, ky_final_ROI, intensity_final_ROI, ...
+            field_interpolants, CONSTANTS, k0_valid);
+    else
+        objfun = @(p) -calc_similarity_ssim(p, kx_standard, ky_standard, intensity_standard,...
+            kx_ROI, ky_ROI, intensity_final_ROI, ...
+            field_interpolants, CONSTANTS, k0_valid);
+    end
     
     % Set optimization options
     opt_options = get_optimization_options(options, @outfun);
-    lb = [-1e-3, -1e-3, -1e-3, -0.1*pi, -0.1*pi, -pi, 0.01];
-    ub = [1e-3, 1e-3, 1e-3, 0.1*pi, 0.1*pi, pi, 0.03];
+    lb = [-1e-3, -1e-3, -1e-3, -0.1*pi, -0.1*pi, -pi, 0.068];
+    ub = [1e-3, 1e-3, 1e-3, 0.1*pi, 0.1*pi, pi, 0.08];
     
     % Run optimization with multiple starting points for robustness
     fprintf('Starting optimization...\n');
@@ -68,14 +84,14 @@ function parameters = optimized_parameters(standard_measured, final_measured,...
     % Visualize results
     visualize_results(kx_standard, ky_standard, intensity_standard, ...
                      kx_final, ky_final, intensity_final, ...
-                     field_interpolants, CONSTANTS, k0_valid, best_p, history);
+                     field_interpolants, CONSTANTS, k0_valid, best_p, history, similarity_function);
     
     % Return structured parameters
     parameters = struct(...
         'transX', best_p(1), 'transY', best_p(2), 'transZ', best_p(3), ...
         'thetaX', best_p(4), 'thetaY', best_p(5), 'thetaZ', best_p(6), ...
         'current', best_p(7));
-    save('optimized_p.mat','parameters');
+    save('optimized_p_plus_innerProduct.mat','parameters');
     
     function stop = outfun(p, optimValues, state)
         stop = false;
@@ -116,9 +132,11 @@ function interpolants = create_field_interpolants(standard_field)
                                         standard_field.Bz, 'linear', 'nearest');
 end
 
-function score = calc_similarity_optimized(parameters, kx_standard, ky_standard, intensity_standard,...
+function score = calc_similarity_innerProduct(parameters, kx_standard, ky_standard, intensity_standard,...
     kx_final_ROI, ky_final_ROI, intensity_final_ROI, ...
     field_interpolants, CONSTANTS, k0_valid)
+    % Notice here kx_final_ROI, ky_final_ROI, intensity_final_ROI are
+    % vectors. kx_sim, ky_sim, I_sim below are also vectors
     
     % Forward simulation
     [kx_sim, ky_sim, I_sim] = forward_sim_vectorized(kx_standard, ky_standard, intensity_standard,...
@@ -154,6 +172,50 @@ function score = calc_similarity_optimized(parameters, kx_standard, ky_standard,
         norm_sim = (intensity_sim_clean - mean(intensity_sim_clean)) / std(intensity_sim_clean);
         
         score = sum(norm_final .* norm_sim) / (length(norm_final) - 1);
+        
+    catch
+        score = -Inf;
+    end
+end
+
+function score = calc_similarity_ssim(parameters, kx_standard, ky_standard, intensity_standard,...
+    kx_ROI, ky_ROI, intensity_final_ROI, ...
+    field_interpolants, CONSTANTS, k0_valid)
+    % Notice here kx_final_ROI, ky_final_ROI, intensity_final_ROI are
+    % vectors. kx_sim, ky_sim, I_sim below are also vectors
+    
+    % Forward simulation
+    [kx_sim, ky_sim, I_sim] = forward_sim_vectorized(kx_standard, ky_standard, intensity_standard,...
+        field_interpolants, CONSTANTS, k0_valid, parameters);
+
+    % Interpolate simulation results to measured grid
+    if length(kx_sim) < 3
+        score = -Inf; % Penalty for insufficient data
+        return;
+    end
+
+    try
+        F_ROI = scatteredInterpolant(kx_sim, ky_sim, I_sim, 'linear', 'none');
+        intensity_sim_ROI = F_ROI(kx_ROI, ky_ROI);
+        
+        % Remove NaN values
+        valid_idx = ~isnan(intensity_sim_ROI) & ~isnan(intensity_final_ROI);
+        if sum(valid_idx(:)) < 0.7 * numel(intensity_sim_ROI)
+            score = -Inf;
+            return;
+        end
+
+        intensity_final_ROI(~valid_idx)=0;
+        intensity_sim_ROI(~valid_idx)=0;
+
+        % Calculate normalized correlation
+        if std(intensity_final_ROI(:)) == 0 || std(intensity_sim_ROI(:)) == 0
+            score = -Inf;
+            return;
+        end
+
+        [~, ssim_map] = ssim(intensity_final_ROI, intensity_sim_ROI);
+        score = mean(ssim_map(valid_idx));
         
     catch
         score = -Inf;
@@ -336,14 +398,14 @@ function best_p = run_multi_start_optimization(objfun, initial_guess, lb, ub, op
         [best_p, fval, exitflag] = fmincon(objfun, initial_guess, [], [], [], [], lb, ub, [], options);
         fprintf('Optimization completed with exit flag: %d, final value: %.6f\n', exitflag, fval);
     catch ME
-        warning('Optimization failed: %s', ME);
+        warning('Optimization failed: %s', ME.message);
         best_p = initial_guess;
     end
 end
 
 function visualize_results(kx_standard, ky_standard, intensity_standard, ...
                           kx_final, ky_final, intensity_final, ...
-                          field_interpolants, CONSTANTS, k0_valid, best_p, history)
+                          field_interpolants, CONSTANTS, k0_valid, best_p, history, similarity_function)
     % Plot optimization history
     if ~isempty(history)
         figure('Name', 'Optimization Progress');
@@ -359,23 +421,32 @@ function visualize_results(kx_standard, ky_standard, intensity_standard, ...
         field_interpolants, CONSTANTS, k0_valid, best_p);
     
     % Create comparison plot
-    figure('Name', 'Fermi Surface Comparison', 'Color', 'w');
-    
-    subplot(1, 2, 1);
-    scatter(kx_final(:), ky_final(:), 10, intensity_final(:), 'filled');
+    figure('Color', 'w');
+    k_r=1.4;
+    center_mask = (kx_final.^2 + ky_final.^2 < k_r^2);
+    kx_final_ROI = kx_final(center_mask);
+    ky_final_ROI = ky_final(center_mask);
+    I_final_ROI = intensity_final(center_mask);
+
+    F_I = scatteredInterpolant(kx_sim,ky_sim,I_sim,'linear','none');
+    I_sim_intp = F_I(kx_final_ROI, ky_final_ROI);
+    clean_mask = ~isnan(I_sim_intp) & ~isnan(I_final_ROI);
+    subplot(1,2,1)
+    scatter(kx_final_ROI(clean_mask), ky_final_ROI(clean_mask), 10, I_final_ROI(clean_mask)-I_sim_intp(clean_mask),'filled');
     axis equal tight;
     xlabel('k_x [10^{10} m^{-1}]');
     ylabel('k_y [10^{10} m^{-1}]');
-    title(sprintf('Measured @ E = %.3f eV', CONSTANTS.target_E));
-    colormap(turbo); colorbar;
-    
-    subplot(1, 2, 2);
-    if ~isempty(kx_sim)
-        scatter(kx_sim, ky_sim, 10, I_sim, 'filled');
-    end
-    axis equal tight;
-    xlabel('k_x [10^{10} m^{-1}]');
-    ylabel('k_y [10^{10} m^{-1}]');
-    title(sprintf('Simulated @ E = %.3f eV', CONSTANTS.target_E));
+    title(['Difference between measured and simulated +field fermi surface (measured-simulated)', ...
+       newline, ...
+       'Using similarity function: ', char(similarity_function)]);
+    annotation('textbox', [0.6 0.3 0.1 0.4], 'String', ...
+    sprintf(['The parameters are:\n' ...
+             'transX = %.5f\ntransY = %.5f\ntransZ = %.5f\n' ...
+             'thetaX = %.4f\nthetaY = %.4f\nthetaZ = %.4f\n' ...
+             'current = %.3f'], ...
+             best_p(1), best_p(2), best_p(3), ...
+             best_p(4), best_p(5), best_p(6), ...
+             best_p(7)), ...
+    'EdgeColor', 'none', 'HorizontalAlignment', 'left', 'FontSize', 12);
     colormap(turbo); colorbar;
 end
