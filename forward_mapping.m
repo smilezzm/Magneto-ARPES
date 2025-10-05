@@ -3,6 +3,7 @@ function [kx_f,ky_f,I_f] = forward_mapping(standard_measured, inverse_mapping)
 %   .kx, .ky, .I_thetax_thetay, .Ef
 %   kx,ky are (N,M) obtained from ARPES data
 %   I_thetax_thetay is the intensity of the same size
+%   Ef is the fermi surface energy 
 % - inverse_mapping: 
 %   Fkx, Fky : inverse mapping
 %   BFcn : interpolant of the field for the chosen parameters
@@ -13,6 +14,7 @@ function [kx_f,ky_f,I_f] = forward_mapping(standard_measured, inverse_mapping)
     me = 9.1093837015e-31; % Electron mass (kg)
     e = 1.602176634e-19;  % Elementary charge (C)
     BFcn = inverse_mapping.BFcn;
+    Ef = standard_measured.Ef;
     z_target = inverse_mapping.z_target;
     kx = standard_measured.kx;
     ky = standard_measured.ky;

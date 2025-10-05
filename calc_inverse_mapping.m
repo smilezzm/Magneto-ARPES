@@ -12,15 +12,12 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters)
     hbar = 1.055e-34;
     me = 9.1093837015e-31; % Electron mass (kg)
     e = 1.602176634e-19;  % Elementary charge (C)
-    photon_energy = 21.2;
-    work_function = 4.29;
-    binding_energy = 0.0;
-    Energy = photon_energy - work_function - binding_energy;  % in eV
-    z_target = 0.015;
+    Energy = 110.56;  % in eV
+    z_target = 0.02;
     gridNum = 100;
     
-    kx_i = linspace(-0.8,0.8,gridNum);   % in units 1e10 m^(-1)
-    ky_i = linspace(-0.8,0.8,gridNum);
+    kx_i = linspace(-1.7,1.7,gridNum);   % in units 1e10 m^(-1)
+    ky_i = linspace(-1.7,1.7,gridNum);   % Should be adjusted as needed
     [kx_i, ky_i] = ndgrid(kx_i, ky_i);
     k_mag = sqrt(2 * Energy * e * me) / hbar / 1e10;
     k0_valid = get_valid_mask(kx_i, ky_i, k_mag);
@@ -66,20 +63,21 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters)
     fprintf('reverse grid mapping has been established\n');
 
     % Plot: initial kx-ky to final kx-ky
-    figure
+    figure('Color', 'w');
+    subplot(1,2,1);
     h1 = scatter(kx_i_valid, ky_i_valid, 10, 'b', 'filled', 'MarkerFaceAlpha', 0.6);
     hold on
     h2 = scatter(kx_f, ky_f, 10, 'r', 'filled', 'MarkerFaceAlpha', 0.6);
     xlabel('kx(10^{10} m^{-1})');
     ylabel('ky(10^{10} m^{-1})');
-    legend([h1, h2], {'Initial kx-ky', 'Predicted final kx-ky'}, 'Location', 'best');
-    title('from initial kx-ky to final kx-ky')
-    grid on
+    legend([h1, h2], {'Intrinsic fermi surface', 'Predicted measured fermi surface'}, 'Location', 'best');
+    title('Simulation of with-field fermi surface')
+    grid on; axis equal;
     set(gcf, 'Color', 'w')  % gcf = get current figure
     
     % Plot: final kx-ky to initial kx-ky
-    figure
-    kx_test = linspace(-0.6, 0.6, 15);
+    subplot(1,2,2);
+    kx_test = linspace(-1, 1, 20);
     ky_test = kx_test;
     [kx_test,ky_test] = meshgrid(kx_test, ky_test);
     kx_eval = Fkx(kx_test, ky_test);
@@ -89,10 +87,22 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters)
     h2 = scatter(kx_eval(:),ky_eval(:),'b','filled','MarkerFaceAlpha',0.6);
     xlabel('kx (10^{10} m^{-1})');
     ylabel('ky (10^{10} m^{-1})');
-    legend([h1, h2], {'Final kx-ky', 'Predicted initial kx-ky'}, 'Location', 'best');
-    title('from final kx-ky to initial kx-ky')
+    legend([h1, h2], {'Measured fermi surface', 'Corrected fermi surface'}, 'Location', 'best');
+    title('From measured with-field fermi surface to corrected fermi surface')
     set(gcf, 'Color', 'w')  % gcf = get current figure
-    grid on
+    grid on; axis equal;
+    
+    % Add annotation to record the parameters
+annotation('textbox', [0.45 0.3 0.1 0.4], 'String', ...
+    sprintf(['The parameters are:\n' ...
+             'transX = %.5f\ntransY = %.5f\ntransZ = %.5f\n' ...
+             'thetaX = %.4f\nthetaY = %.4f\nthetaZ = %.4f\n' ...
+             'current = %.3f'], ...
+             parameters.transX, parameters.transY, parameters.transZ, ...
+             parameters.thetaX, parameters.thetaY, parameters.thetaZ, ...
+             parameters.current), ...
+    'EdgeColor', 'none', 'HorizontalAlignment', 'left', 'FontSize', 12);
+
     
     % Store Fkx and Fky, which map (kx,ky) to kx0 and ky0 respectively
     save('inverse_mapping.mat','BFcn','Fkx','Fky','z_target');

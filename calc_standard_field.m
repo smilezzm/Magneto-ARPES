@@ -37,6 +37,7 @@ function standard_field = calc_standard_field(z_target, doPlot)
     gapCoilCore   = 1.28e-3;
     grooveLength  = 1.016e-3;
     wireD         = 0.165e-3;
+    current = 0.2;               % A
 
     % No rotation/translation (standard configuration)
     thetax = 0; thetay = 0; thetaz = 0;
@@ -87,7 +88,6 @@ function standard_field = calc_standard_field(z_target, doPlot)
     % Magnetostatic model
     model = femodel(AnalysisType="magnetostatic", Geometry=gm);
     model.VacuumPermeability = 1.2566370614E-6;
-    current = 0.2;                      % A
     currentDensity = current / wireD^2; % A/m^2
 
     % Materials
