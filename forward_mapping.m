@@ -65,31 +65,45 @@ function vxvy = getFinalVelocity(BFcn, Energy, vx0, vy0, z_target)
     B_mag_center = norm(BFcn(0,0,0));
     omega_c = e * B_mag_center / me;
     T_c = 2 * pi / omega_c;
-    dt = T_c / 100;
+    dt = T_c / 200;
     x = [0;0;0];
-    q = -e;
     v_half = [vx0;vy0;sqrt(2*Energy/me-vx0^2-vy0^2)];
-    t = 0;
-    maxSteps = 5000;
+    maxSteps = 500;
     for n = 1:maxSteps
-        % Boris rotation (E=0)
-        B = BFcn(x(1),x(2),x(3));              % [Bx; By; Bz] at position x
-        tvec = (q*dt/(2*me)) * B;  % t vector
+        v_prev = v_half;
+        % Boris rotation
+        B = BFcn(x(1), x(2), x(3));
+        tvec = (- e * dt / (2 * me)) * B;
         t2 = dot(tvec, tvec);
-        svec = 2*tvec/(1 + t2);
-    
-        v_minus = v_half;               % E-half kick skipped (E=0)
+        svec = 2 * tvec / (1 + t2);
+        
+        v_minus = v_half;
         v_prime = v_minus + cross(v_minus, tvec);
-        v_plus  = v_minus + cross(v_prime, svec);
-        v_half  = v_plus;               % velocity at (n+1/2)
-    
+        v_plus = v_minus + cross(v_prime, svec);
+        v_half = v_plus;
+        
         % Position update
-        x = x + dt * v_half;
-        t = t + dt;
-        % Check crossing of target plane
-        if x(3) >= z_target
-            vxvy = v_half(1:2);
-            return
+        x_new = x + dt * v_half; 
+        
+        % Check for target crossing
+        if x_new(3) >= z_target
+            % Linear interpolation for exact crossing point
+            alpha = (z_target - x(3)) / (x_new(3) - x(3));
+            % Interpolate velocity at exact crossing
+            v_exact = v_prev + alpha * (v_half - v_prev);
+            vxvy = v_exact(1:2);
+            return;
+        end
+        
+        x = x_new;
+        
+        % Adaptive time step based on field gradient
+        if mod(n, 10) == 0
+            B_norm = norm(B);
+            if B_norm > 0
+                omega_c = e * B_norm / me;
+                dt = 2 * pi / omega_c / 200;
+            end
         end
     end
     error('Plane not reached within maxSteps.');

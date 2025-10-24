@@ -2,7 +2,7 @@ function parameters = optimized_parameters_dual(standard_measured, final_measure
     k_r, standard_field, initial_guess, options)
     % This function returns the parameters that make the forward simulated
     % fermi surface figures match the best with both measured figures, for the
-    % "calibrating" sample or "standard" sample. 
+    % plus field and minus field
     %
     % Inputs:
     %   - standard_measured: the measured fermi surface of the standard sample with field off
@@ -393,7 +393,7 @@ function BFcn = create_magnetic_field_function(field_interpolants, parameters)
     Rx = [1 0 0; 0 cx -sx; 0 sx cx];
     Ry = [cy 0 sy; 0 1 0; -sy 0 cy];
     Rz = [cz -sz 0; sz cz 0; 0 0 1];
-    Rot = Rz * Ry * Rx;
+    Rot = Rz * Rx * Ry;
     
     field_ratio = current / 0.2;
     
@@ -405,7 +405,7 @@ end
 function B = compute_field_at_point(x, y, z, interpolants, Rot, transX, transY, transZ, field_ratio)
     % Transform coordinates
     pos_global = [x - transX; y - transY; z - transZ];
-    pos_local = Rot' * pos_global;
+    pos_local = Rot * pos_global;
     
     % Interpolate field in local coordinates
     Bl = [interpolants.Bx(pos_local(1), pos_local(2), pos_local(3));
@@ -413,7 +413,7 @@ function B = compute_field_at_point(x, y, z, interpolants, Rot, transX, transY, 
           interpolants.Bz(pos_local(1), pos_local(2), pos_local(3))];
     
     % Transform back to global coordinates
-    B = Rot * Bl * field_ratio;
+    B = Rot' * Bl * field_ratio;
 end
 
 function vxvy = getFinalVelocity_optimized(BFcn, Energy, vx0, vy0, z_target, CONSTANTS)

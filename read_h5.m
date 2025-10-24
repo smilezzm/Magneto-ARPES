@@ -127,7 +127,7 @@ function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
     % --- Build angle grids ---
     Tx_rad = deg2rad(Tx);
     Ty_rad = deg2rad(Ty);
-    [ThetaY_grid, ThetaX_grid] = ndgrid(Tx_rad, Ty_rad); % deg
+    [ThetaX_grid, ThetaY_grid] = ndgrid(Tx_rad, Ty_rad); % deg
     % Notice here thetay is the rotation around x axis!
     
     % --- Compute k magnitude ---
@@ -135,8 +135,10 @@ function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
     k_mag  = sqrt(2 * me * Ekin_J) / hbar; % [m^-1]
     
     % --- Map to kx, ky ---
-    kx = k_mag .* cos(ThetaX_grid) .* sin(ThetaY_grid);
-    ky = k_mag .* sin(ThetaX_grid);
+    % ky = k_mag .* cos(ThetaY_grid) .* sin(ThetaX_grid);
+    % kx = k_mag .* sin(ThetaY_grid);
+    ky = k_mag .* tan(ThetaX_grid).*cos(ThetaY_grid)./sqrt(1+tan(ThetaX_grid).^2.*cos(ThetaY_grid).^2);
+    kx = k_mag .* tan(ThetaY_grid).*cos(ThetaX_grid)./sqrt(1+tan(ThetaY_grid).^2.*cos(ThetaX_grid).^2);
     
     % --- Scale to 1e10 m^-1 ---
     kx = kx / 1e10;
