@@ -1,11 +1,11 @@
 % Don't forget to change the path of .h5 before running the script and
 % to change the .mat filename when saving the output data.
-function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
+function [kx,ky,I_thetax_thetay] = read_h5_Ef(filename, Ef)
     if nargin < 2 || isempty(Ef)
         Ef=110.56;
     end
     if nargin < 1 || isempty(filename)
-        filename = 'D:\yao\Rice University\Academic\magneto ARPES\C_0006.h5';
+        filename = 'D:\yao\Rice University\Academic\magneto ARPES\C_0004.h5';
     end
     %% ---------- Parameters from your .ini ----------
     params = struct();
@@ -84,21 +84,6 @@ function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
         warning('Data contains non-finite values. Endianness or dtype may be wrong.');
     end
     
-    % %% ---------- Save compact .mat ----------
-    % out = struct();
-    % out.data_raw = raw;       % original orientation [D x H x W] [thetay x thetax x energy]
-    % out.energy   = E(:);
-    % out.thetax   = Tx(:);
-    % out.thetay   = Ty(:);
-    % out.labels   = struct('energy', params.energy_label, ...
-    %                       'thetax', params.thetax_label, ...
-    %                       'thetay', params.thetay_label);
-    % out.meta     = params;     % keep full metadata
-    % 
-    % save_name = sprintf('%s_ARPES_%dx%dx%d.mat', params.region_name, D, H, W);
-    % save(save_name, '-struct', 'out');
-    % fprintf('Saved: %s\n', save_name);
-    
     %% ---------- Quick-look plots ----------
     figure('Color','w');
     % Pick energy near the Fermi level
@@ -139,6 +124,7 @@ function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
     % kx = k_mag .* sin(ThetaY_grid);
     ky = k_mag .* tan(ThetaX_grid).*cos(ThetaY_grid)./sqrt(1+tan(ThetaX_grid).^2.*cos(ThetaY_grid).^2);
     kx = k_mag .* tan(ThetaY_grid).*cos(ThetaX_grid)./sqrt(1+tan(ThetaY_grid).^2.*cos(ThetaX_grid).^2);
+    % x,y correspond to tilt axis and polar axis
     
     % --- Scale to 1e10 m^-1 ---
     kx = kx / 1e10;
@@ -153,7 +139,7 @@ function [kx,ky,I_thetax_thetay] = read_h5(filename, Ef)
     title(sprintf('kx-ky @ E = %.3f eV', Ef));
     colormap turbo; colorbar;
     
-    save('fermi_surface_0mA.mat','kx','ky','I_thetax_thetay','Ef');
+    save('./matdata/fermi_surface_110mA.mat','kx','ky','I_thetax_thetay','Ef');
 
 end
 

@@ -1,4 +1,4 @@
-function standard_field = calc_standard_field(z_target, doPlot)
+function standard_field = calc_standard_field_withoutShield(z_target, doPlot)
 %CALC_STANDARD_FIELD Build PDE model, solve magnetostatics at 0.2 A, and sample B on a grid.
 %   standard_field = calc_standard_field(z_target, doPlot)
 %   Outputs:
@@ -24,26 +24,21 @@ function standard_field = calc_standard_field(z_target, doPlot)
     coilDin       = 6.3e-3;
     coilDout      = 12e-3;
     coilHeight    = 5.6e-3;
-    shieldDout    = 13e-3;
-    shieldDin     = 4e-3;
-    shieldHeight  = 0.25e-3;
     coreDout1     = 5.334e-3;
     coreDin       = 2.286e-3;
     coreDout2     = 3.5e-3;
     coreHeight1   = 2.794e-3;
     coreHeight2   = 3.048e-3;
     gapCoilCore   = 1.28e-3;
-    gapCoilShield = 2e-4;
     grooveLength  = 1.016e-3;
     wireD         = 0.165e-3;
+    shieldHeight  = 0.25e-3;
     current = 0.2;               % A
 
-    % No rotation/translation (standard configuration)
+    thetax = 0; thetay = 0; thetaz = 0;
+    translationX = 0; translationY = 0; translationZ = 0;
 
     % Build geometry
-    shieldGm = multicylinder([shieldDin/2, shieldDout/2], shieldHeight, Void=[1 0]);
-    shieldGm = translate(shieldGm, [0,0,-shieldHeight + gapCoilShield]);
-
     coilGm = multicylinder([coilDin/2, coilDout/2], coilHeight, Void=[1 0]);
     coilGm = translate(coilGm, [0,0,-shieldHeight-coilHeight]);
 
@@ -61,15 +56,13 @@ function standard_field = calc_standard_field(z_target, doPlot)
 
     coreGm1 = fegeometry(coreGm1);
     coreGm2 = fegeometry(coreGm2);
-    shieldGm = fegeometry(shieldGm);
     coilGm   = fegeometry(coilGm);
     cuttingBox = fegeometry(cuttingBox);
     airGm    = fegeometry(airGm);
     groovedCoreGm = subtract(union(coreGm1, coreGm2), cuttingBox);
 
     % collect all the geometry
-    gm = addCell(airGm, shieldGm);
-    gm = addCell(gm, groovedCoreGm);
+    gm = addCell(airGm, groovedCoreGm);
     gm = addCell(gm, coilGm);
     fprintf('geometry built\n');
 
@@ -86,22 +79,22 @@ function standard_field = calc_standard_field(z_target, doPlot)
 
     % Materials
     model.MaterialProperties = materialProperties(RelativePermeability=1);
-    model.MaterialProperties(findCell(gm, [shieldDin/4+shieldDout/4,0,-shieldHeight/2+gapCoilShield])) = materialProperties(RelativePermeability=83000);   % shield
     model.MaterialProperties(findCell(gm, [coreDout1/4+coreDin/4,0,-shieldHeight-gapCoilCore-coreHeight1/2])) = materialProperties(RelativePermeability=100000);  % core
 
-    % Coil current on Cell 4 (mostly air=1, shield=2, core=3, coil=4 in this build, 
+    % Coil current on Cell 4 (mostly air=1, core=2, coil=3 in this build, 
     % but use findCell just in case)
     model.CellLoad(findCell(gm, [coilDout/4+coilDin/4, 0, -shieldHeight-coilHeight/2])) = cellLoad(CurrentDensity=@(region, state) ...
-        windingCurrent3D(region, state, currentDensity));
+        windingCurrent3D(region, state, thetax, thetay, thetaz, ...
+                         [translationX, translationY, translationZ], currentDensity));
 
     % Mesh (balanced for speed/accuracy)
-    model = applyOptimizedMesh(model, shieldHeight, gapCoilCore, coilHeight, airD);
+    model = applyOptimizedMesh(model, grooveLength, coilHeight, airD);
     % model = generateMesh(model);
     fprintf('mesh built\n');
 
     % Solver options and BC
-    model.SolverOptions.RelativeTolerance = 5e-5;
-    model.SolverOptions.AbsoluteTolerance = 1e-7;
+    model.SolverOptions.RelativeTolerance = 1e-5;
+    model.SolverOptions.AbsoluteTolerance = 1e-8;
     model.FaceBC(1:3) = faceBC(MagneticPotential=[0;0;0]); % air cylinder outer faces
 
     % Solve
@@ -122,7 +115,7 @@ function standard_field = calc_standard_field(z_target, doPlot)
     Bz = reshape(Bdata.Bz, size(Z));
 
     standard_field = struct('X', X, 'Y', Y, 'Z', Z, 'Bx', Bx, 'By', By, 'Bz', Bz);
-    save('./matdata/standard_field_withShield.mat', 'X','Y','Z','Bx','By','Bz','current','z_target');
+    save('./matdata/standard_field_withoutShield.mat', 'X','Y','Z','Bx','By','Bz','current','z_target');
 
     if doPlot
         %% Plot B field in 3D together with the geometry
@@ -175,10 +168,6 @@ function standard_field = calc_standard_field(z_target, doPlot)
         quiver(Xq, Zq, Bxq, Bzq, 1, 'r', 'AutoScale', 'on', 'LineWidth', 1);
         hold on
         % --- Step 3: Geometry slice ---
-        rectangle('Position', [-shieldDout/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
-        rectangle('Position', [shieldDin/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
         rectangle('Position', [-coilDout/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
         hold on
         rectangle('Position', [coilDin/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
@@ -223,10 +212,6 @@ function standard_field = calc_standard_field(z_target, doPlot)
         quiver(Yq, Zq, Byq, Bzq, 1, 'r', 'AutoScale', 'on', 'LineWidth', 1);
         hold on
         % --- Step 3: Geometry slice ---
-        rectangle('Position', [-shieldDout/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
-        rectangle('Position', [shieldDin/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
         rectangle('Position', [-coilDout/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
         hold on
         rectangle('Position', [coilDin/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
@@ -291,10 +276,6 @@ function standard_field = calc_standard_field(z_target, doPlot)
         quiver(Xq, Zq, Bxq, Bzq, 1, 'r', 'AutoScale', 'on', 'LineWidth', 1);
         hold on
         % % --- Step 3: Geometry slice ---
-        rectangle('Position', [-shieldDout/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
-        rectangle('Position', [shieldDin/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
         rectangle('Position', [-coilDout/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
         hold on
         rectangle('Position', [coilDin/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
@@ -338,10 +319,6 @@ function standard_field = calc_standard_field(z_target, doPlot)
         quiver(Yq, Zq, Byq, Bzq, 1, 'r', 'AutoScale', 'on', 'LineWidth', 1);
         hold on
         % --- Step 3: Geometry slice ---
-        rectangle('Position', [-shieldDout/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
-        rectangle('Position', [shieldDin/2, -shieldHeight+gapCoilShield, (shieldDout-shieldDin)/2, shieldHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
-        hold on
         rectangle('Position', [-coilDout/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
         hold on
         rectangle('Position', [coilDin/2, -shieldHeight-coilHeight, (coilDout-coilDin)/2, coilHeight], 'EdgeColor', 'r', 'LineWidth', 1, 'Clipping', 'off');
@@ -357,15 +334,7 @@ function standard_field = calc_standard_field(z_target, doPlot)
     end
 end
 
-function f3D = windingCurrent3D(region, ~, currentDensity)
-    phi = atan2(region.y, region.x);
-    I_local = [-sin(phi); cos(phi); zeros(size(phi))];
-
-    f3D = I_local * currentDensity;
-end
-
-function model = applyOptimizedMesh(model, shieldHeight, ...
-                                        gapCoilCore, coilHeight, airD)
+function model = applyOptimizedMesh(model,grooveLength, coilHeight, airD)
     %APPLYOPTIMIZEDMESH  Apply tuned mesh parameters to a PDE model
     %
     %   model = applyOptimizedMesh(model, shieldHeight, ...
@@ -375,25 +344,22 @@ function model = applyOptimizedMesh(model, shieldHeight, ...
     %   variables do not clutter the base workspace.
     
     % --- Balance between accuracy and speed ---
-    smallFeature   = shieldHeight;     
-    hSmallTarget   = smallFeature / 3;       % Reduced from 5 (coarser mesh)
-    shieldTarget   = hSmallTarget * 1.1;     % Slightly increase for faster calc
-    HminVal        = hSmallTarget * 1.1;     % Increased minimum element size
-    coilGapTarget  = gapCoilCore / 3;        
+    smallFeature   = grooveLength;     
+    hSmallTarget   = smallFeature / 4; 
+    HminVal        = 1.1 * hSmallTarget;   
+    coilGapTarget  = grooveLength / 4;        
     coilBulkTarget = coilHeight / 5;         
-    airCoarse      = airD / 6;              
+    airCoarse      = airD / 6;               
 
-    % Increased growth rate for faster transition between fine and coarse
-    HmaxVal  = min(airCoarse, 30 * HminVal); % Increased from 16
-    HgradVal = 1.8;                          % Increased from 1.65
+    HmaxVal  = min(airCoarse, 18 * HminVal); 
+    HgradVal = 1.8;                          
 
     % Safety factor function
     sf = @(h) max(h, 1.05 * HminVal);
 
     % Face groups
-    shieldFaces = cellFaces(model.Geometry, 2);
-    coreFaces   = cellFaces(model.Geometry, 3);
-    coilFaces   = cellFaces(model.Geometry, 4);
+    coreFaces   = cellFaces(model.Geometry, 2);
+    coilFaces   = cellFaces(model.Geometry, 3);
 
     % --- Generate mesh ---
     model = generateMesh(model, ...
@@ -402,9 +368,31 @@ function model = applyOptimizedMesh(model, shieldHeight, ...
         Hmax  = HmaxVal, ...
         Hgrad = HgradVal, ...
         Hface = { ...
-            shieldFaces, sf(shieldTarget), ...
             coilFaces,   sf(min(coilGapTarget, coilBulkTarget)), ...
             coreFaces,   sf(coilGapTarget)});
 
     fprintf('mesh created\n');
+end
+
+function f3D = windingCurrent3D(region, ~, thetax, thetay, thetaz, Tvec, currentDensity)
+    % Don't forget to consider rotation and translation
+    cx = cos(thetax); sx = sin(thetax);
+    cy = cos(thetay); sy = sin(thetay);
+    cz = cos(thetaz); sz = sin(thetaz);
+    Rx = [1 0 0; 0 cx -sx; 0 sx cx];
+    Ry = [cy 0 sy; 0 1 0; -sy 0 cy];
+    Rz = [cz -sz 0; sz cz 0; 0 0 1];
+    Rot = Rz*Ry*Rx;
+
+    xg = region.x - Tvec(1);
+    yg = region.y - Tvec(2);
+    zg = region.z - Tvec(3);
+    Pglob = [xg; yg; zg];
+    Ploc = Rot.' * Pglob;
+
+    xl = Ploc(1,:); yl = Ploc(2,:);
+    phi = atan2(yl, xl);
+    I_local = [-sin(phi); cos(phi); zeros(size(phi))];
+
+    f3D = Rot * I_local * currentDensity;
 end

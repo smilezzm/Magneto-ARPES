@@ -108,7 +108,7 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid
     end
     
     % Store Fkx and Fky, which map (kx,ky) to kx0 and ky0 respectively
-    save('inverse_mapping.mat','BFcn','Fkx','Fky','z_target');
+    save('./matdata/inverse_mapping.mat','BFcn','Fkx','Fky','z_target');
 end
 
 function k0_valid = get_valid_mask(kx_standard, ky_standard, k_mag)
