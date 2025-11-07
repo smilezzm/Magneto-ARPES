@@ -5,13 +5,14 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     % plus field and minus field
     % Sometimes, we can fix the thetaX, thetaY, thetaZ and only tune the
     % four left parameters.
-    %
+    % 
     % Inputs:
     %   - final_measured_plus: the measured fermi surface with positive field
     %       .kx, .ky, .I_thetax_thetay
     %   - final_measured_minus: the measured fermi surface with negative field
     %       .kx, .ky, .I_thetax_thetay
     %   - k_r: the radius of k (in 1e10 m^(-1)) that we are interested at the center 
+    %       In this case, from experience, k_r could be 1.1
     %   - standard_field: an object containing the standard field values on grids
     %       .Bx, .By, .Bz, .X, .Y, .Z
     %   - initial_guess: a vector [transX; transY; transZ; thetaX; thetaY; thetaZ; current]
@@ -22,11 +23,15 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     %       optimized (indices follow the order of the initial_guess
     %       vector); the remaining entries stay fixed at their initial
     %       values.
+    %       options.similarity_method: 'delta' or 'ssim'
+    %           'delta' is recommended to finetune the already good
+    %           parameters
     % Outputs:
     %   - parameters: optimized parameters structure
 
     if nargin < 10
         options = struct();
+        options.method = 'delta';
     end
 
     free_idx = 1:7;
@@ -54,8 +59,8 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     [kx_minus, ky_minus, intensity_minus] = extract_data(final_measured_minus);
     validate_inputs_dual(kx_plus, ky_plus, intensity_plus, ...
                         kx_minus, ky_minus, intensity_minus);
-    kx_ROI = linspace(-k_r,k_r,120);
-    ky_ROI = linspace(-k_r,k_r,120);
+    kx_ROI = linspace(-k_r,k_r,100);
+    ky_ROI = linspace(-k_r,k_r,100);
     [kx_ROI,ky_ROI]=ndgrid(kx_ROI,ky_ROI);
     
     
@@ -67,7 +72,7 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     objfun_full = @(p) -calc_dual_similarity_optimized(p, ...
         kx_ROI, ky_ROI, kx_plus, ky_plus,  intensity_plus, ...
         kx_minus, ky_minus, intensity_minus, ...
-        field_interpolants);
+        field_interpolants, k_r, options.similarity_method);
     objfun = @(p_free) objfun_full(expand_params(p_free));
     initial_guess_free = initial_guess(free_idx);
     lb_free = lb(free_idx);
@@ -86,7 +91,7 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
         'transX', best_p(1), 'transY', best_p(2), 'transZ', best_p(3), ...
         'thetaX', best_p(4), 'thetaY', best_p(5), 'thetaZ', best_p(6), ...
         'current', best_p(7));
-    save('optimized_p_dual_correction.mat','parameters');
+    save('./matdata/optimized_p_dual_correction.mat','parameters');
 
     % Visualize results
     visualize_dual_results(kx_plus, ky_plus, intensity_plus, ...
@@ -123,7 +128,7 @@ end
 function score = calc_dual_similarity_optimized(parameters, ...
     kx_ROI, ky_ROI, kx_plus, ky_plus,  intensity_plus, ...
         kx_minus, ky_minus, intensity_minus, ...
-    field_interpolants)
+    field_interpolants, k_r, method)
     
     BFcn = create_magnetic_field_function(field_interpolants, parameters);
     [Fkx_plus, Fky_plus] = inverse_mapping(BFcn);
@@ -139,7 +144,7 @@ function score = calc_dual_similarity_optimized(parameters, ...
     % Calculate similarity for positive field
     score = calc_similarity(kx_corrected_plus, ky_corrected_plus, intensity_plus, ...
                                kx_corrected_minus, ky_corrected_minus, intensity_minus, ...
-                               kx_ROI, ky_ROI);
+                               kx_ROI, ky_ROI, k_r, method);
     
     % Debug output every 50 evaluations
     persistent eval_count;
@@ -154,39 +159,68 @@ end
 
 function score = calc_similarity(kx_corrected_plus, ky_corrected_plus, intensity_plus, ...
                                        kx_corrected_minus, ky_corrected_minus, intensity_minus, ...
-                                       kx_ROI, ky_ROI)
-    try
-        % Interpolate backmapping results to grid
+                                       kx_ROI, ky_ROI, k_r, method)
+    if strcmp(method, 'delta')
+        ROI_mask = (kx_ROI.^2 + ky_ROI.^2 <= k_r^2);
+        kx_ROI_vector = kx_ROI(ROI_mask);
+        ky_ROI_vector = ky_ROI(ROI_mask);
         valid_idx = ~isnan(kx_corrected_plus);
         F_plus_ROI = scatteredInterpolant(kx_corrected_plus(valid_idx), ...
             ky_corrected_plus(valid_idx), ...
             intensity_plus(valid_idx), 'linear', 'none');
-        intensity_plus_ROI = F_plus_ROI(kx_ROI, ky_ROI);
         valid_idx = ~isnan(kx_corrected_minus);
         F_minus_ROI = scatteredInterpolant(kx_corrected_minus(valid_idx), ...
             ky_corrected_minus(valid_idx), ...
             intensity_minus(valid_idx), 'linear', 'none');
-        intensity_minus_ROI = F_minus_ROI(kx_ROI, ky_ROI);
-
-        % Remove NaN values
-        valid_idx = ~isnan(intensity_plus_ROI) & ~isnan(intensity_minus_ROI);
-        if sum(valid_idx(:)) < 0.7 * numel(intensity_minus_ROI)
+        I_plus_ROI_vector = F_plus_ROI(kx_ROI_vector, ky_ROI_vector);
+        I_minus_ROI_vector = F_minus_ROI(kx_ROI_vector, ky_ROI_vector);
+        valid_idx = ~isnan(I_plus_ROI_vector) & ~isnan(I_minus_ROI_vector);
+        if sum(valid_idx(:)) < 0.7 * numel(I_minus_ROI_vector)
             score = -Inf;
             return;
         end
-        intensity_plus_ROI(~valid_idx)=0;
-        intensity_minus_ROI(~valid_idx)=0;
-        
-        % Calculate normalized correlation
-        if std(intensity_plus_ROI(:)) == 0 || std(intensity_minus_ROI(:)) == 0
-            score = -Inf;
-            return;
-        end
+        I_plus_clean = I_plus_ROI_vector(valid_idx);
+        I_minus_clean = I_minus_ROI_vector(valid_idx);
+        norm_I_plus = (I_plus_clean - mean(I_plus_clean)) / std(I_plus_clean);
+        norm_I_minus = (I_minus_clean - mean(I_minus_clean)) / std(I_minus_clean);
+        score = - mean(abs(norm_I_plus-norm_I_minus));
 
-        [~, ssim_map] = ssim(intensity_plus_ROI, intensity_minus_ROI);
-        score = mean(ssim_map(valid_idx));
-    catch
-        score = -Inf;
+    elseif strcmp(method, 'ssim')
+        try
+            % Interpolate backmapping results to grid
+            valid_idx = ~isnan(kx_corrected_plus);
+            F_plus_ROI = scatteredInterpolant(kx_corrected_plus(valid_idx), ...
+                ky_corrected_plus(valid_idx), ...
+                intensity_plus(valid_idx), 'linear', 'none');
+            intensity_plus_ROI = F_plus_ROI(kx_ROI, ky_ROI);
+            valid_idx = ~isnan(kx_corrected_minus);
+            F_minus_ROI = scatteredInterpolant(kx_corrected_minus(valid_idx), ...
+                ky_corrected_minus(valid_idx), ...
+                intensity_minus(valid_idx), 'linear', 'none');
+            intensity_minus_ROI = F_minus_ROI(kx_ROI, ky_ROI);
+    
+            % Remove NaN values
+            valid_idx = ~isnan(intensity_plus_ROI) & ~isnan(intensity_minus_ROI);
+            if sum(valid_idx(:)) < 0.7 * numel(intensity_minus_ROI)
+                score = -Inf;
+                return;
+            end
+            intensity_plus_ROI(~valid_idx)=0;
+            intensity_minus_ROI(~valid_idx)=0;
+            
+            % Calculate normalized correlation
+            if std(intensity_plus_ROI(:)) == 0 || std(intensity_minus_ROI(:)) == 0
+                score = -Inf;
+                return;
+            end
+    
+            [~, ssim_map] = ssim(intensity_plus_ROI, intensity_minus_ROI);
+            score = mean(ssim_map(valid_idx));
+        catch
+            score = -Inf;
+        end
+    else
+        error('input options.similarity_method must be either ''ssim'' or ''delta'' ');
     end
 end
 
@@ -353,7 +387,8 @@ end
 function B = compute_field_at_point(x, y, z, interpolants, Rot, transX, transY, transZ, field_ratio)
     % Transform coordinates
     pos_global = [x - transX; y - transY; z - transZ];
-    pos_local = Rot * pos_global;
+    pos_local = Rot * pos_global;  % impose CW rotation thetaX, thetaY, thetaZ on the coil frame (during which the axes of thetaY, thetaZ are also rotating)
+    % pos_global is the coordinates in lab frame, pos_local is the coordinates in coil frame
     
     % Interpolate field in local coordinates
     Bl = [interpolants.Bx(pos_local(1), pos_local(2), pos_local(3));
@@ -423,13 +458,23 @@ end
 
 function options = get_optimization_options(outfun)
     default_options = optimoptions('fmincon', ...
-        'Display', 'iter-detailed', ...
-        'OutputFcn', outfun, ...
-        'MaxIterations', 500, ...
-        'MaxFunctionEvaluations', 2000, ...
-        'StepTolerance', 1e-8, ...
-        'OptimalityTolerance', 1e-6, ...
-        'UseParallel', true);
+        'Display','iter-detailed', ...
+        'OutputFcn',outfun, ...
+        'MaxIterations',500, ...          % allow more iterations
+        'MaxFunctionEvaluations',4000, ...  % allow more evaluations
+        'StepTolerance',1e-9, ...         % smaller step stop criterion
+        'FunctionTolerance',1e-7, ...     % keep iterating until objective change is tiny
+        'OptimalityTolerance',1e-7, ...    % tighten first-order optimality tolerance
+        'UseParallel',true);
+
+% default_options = optimoptions('fmincon', ...
+%         'Display', 'iter-detailed', ...
+%         'OutputFcn', outfun, ...
+%         'MaxIterations', 500, ...
+%         'MaxFunctionEvaluations', 2000, ...
+%         'StepTolerance', 1e-8, ...
+%         'OptimalityTolerance', 1e-6, ...
+%         'UseParallel', true);
     
     options = default_options;
 end

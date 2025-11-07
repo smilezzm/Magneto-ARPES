@@ -79,7 +79,7 @@ function parameters = optimized_parameters_dual(standard_measured, final_measure
         'transX', best_p(1), 'transY', best_p(2), 'transZ', best_p(3), ...
         'thetaX', best_p(4), 'thetaY', best_p(5), 'thetaZ', best_p(6), ...
         'current', best_p(7));
-    save('optimized_p_dual.mat','parameters');
+    save('./matdata/optimized_p_dual.mat','parameters');
     
     function stop = outfun(p, optimValues, state)
         stop = false;
