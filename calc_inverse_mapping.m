@@ -1,10 +1,9 @@
-function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid)
+function [Fkx, Fky] = calc_inverse_mapping(standard_field, Energy, parameters, plot_grid)
     % The function returns a mapping function that find the (kx,ky) map
     % when the electrons just came out at the surface of the sample, from
     % the (kx,ky) map received by ARPES. 
     % The parameters is an object that contains .transX, .transY, .transZ,
-    % .thetaX, .thetaY, .thetaZ, current, and that is obtained from
-    % optimized_parameters(...)
+    % .thetaX, .thetaY, .thetaZ, current. Degrees unit is rad!!
     % plot_grid = true/false to plot the grid of forward/inverse mapping
     % with provided parameters
     % Output:
@@ -14,7 +13,7 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid
     hbar = 1.055e-34;
     me = 9.1093837015e-31; % Electron mass (kg)
     e = 1.602176634e-19;  % Elementary charge (C)
-    Energy = 110.56;  % in eV
+    % for fermi-surface, Energy = 110.56;  % in eV
     z_target = 0.02;
     gridNum = 100;
     
@@ -57,8 +56,8 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid
     end
 
     try
-        Fkx = scatteredInterpolant(kx_f, ky_f, kx_i_valid, 'linear', 'nearest');
-        Fky = scatteredInterpolant(kx_f, ky_f, ky_i_valid, 'linear', 'nearest');
+        Fkx = scatteredInterpolant(kx_f, ky_f, kx_i_valid, 'linear', 'none');
+        Fky = scatteredInterpolant(kx_f, ky_f, ky_i_valid, 'linear', 'none');
     catch ME
         error('Failed to interpolate for this energy slice: %s', ME.message);
     end
@@ -85,9 +84,10 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid
         [kx_test,ky_test] = meshgrid(kx_test, ky_test);
         kx_eval = Fkx(kx_test, ky_test);
         ky_eval = Fky(kx_test, ky_test);
+        valid_mask = ~isnan(kx_eval) & ~isnan(ky_eval);
         h1 = scatter(kx_test(:),ky_test(:),'r','filled','MarkerFaceAlpha',0.6);
         hold on
-        h2 = scatter(kx_eval(:),ky_eval(:),'b','filled','MarkerFaceAlpha',0.6);
+        h2 = scatter(kx_eval(valid_mask),ky_eval(valid_mask),'b','filled','MarkerFaceAlpha',0.6);
         xlabel('kx (10^{10} m^{-1})');
         ylabel('ky (10^{10} m^{-1})');
         legend([h1, h2], {'Measured fermi surface', 'Corrected fermi surface'}, 'Location', 'best');
@@ -108,7 +108,7 @@ function [Fkx, Fky] = calc_inverse_mapping(standard_field, parameters, plot_grid
     end
     
     % Store Fkx and Fky, which map (kx,ky) to kx0 and ky0 respectively
-    save('./matdata/inverse_mapping.mat','BFcn','Fkx','Fky','z_target');
+    % save('./matdata/inverse_mapping.mat','BFcn','Fkx','Fky','z_target');
 end
 
 function k0_valid = get_valid_mask(kx_standard, ky_standard, k_mag)

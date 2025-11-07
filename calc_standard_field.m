@@ -82,7 +82,7 @@ function standard_field = calc_standard_field(z_target, doPlot)
     % Magnetostatic model
     model = femodel(AnalysisType="magnetostatic", Geometry=gm);
     model.VacuumPermeability = 1.2566370614E-6;
-    currentDensity = current / wireD^2; % A/m^2
+    currentDensity = current / wireD^2 / 1.4865; % A/m^2 devide by a constant 1.4865 to calibrate with real measured data
 
     % Materials
     model.MaterialProperties = materialProperties(RelativePermeability=1);
