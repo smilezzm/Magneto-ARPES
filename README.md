@@ -10,41 +10,20 @@ This file contains a `MagnetoARPES` class, which integrates all the functions ne
 ## examples_of_magnetoarpes.ipynb
 This file builds an instance of `MagnetoARPES` and shows how some functions work.
 
-![](./figures/plot_k_mapping.png)
 
 # Matlab Codes
-## Workflow
-![](./figures/workflow.png)
-## calc_standard_field.m
-Calculate the filed, given the real geometry (coil, core, shield), with no translation or rotation， which means the geometry is normal at the center， and with a current of 0.2A. 
+## Workflow1
+Find a set of parameters that describes the position of the coil when the sample is tuned normal to the DA in the experiment.
+![](./figures/workflow1.png)
+## Workflow2
+Get + field and - field bands from experiments, with the sample tuned normal to the DA, which can be realized by looking at 0 field bands.
 
-The result is stored as some values on grids. `R=solve(model)` cannot be stored because when you load it next time and interpolate the field value at some points, it will generate incorrect results, different from the `R` directly solved.
+Preprocess these bands in Igor to correct the fermi-surface... And export the preprocessed data to .h5, which are read by matlab to generate .mat data files.
 
-The grid data is stroed in `standard_field.mat`
+Based on the logged manipulator angles, tune the parameters until + and - field FS, corrected with this set of parameters, match well. Then we believe that this set of parameters greatly describes the magnetic field in this experiment.
 
-## calc_inverse_mapping.m
-Given certain parameters (current of $x$ mA, some translation and rotation), derive the field from standard field. And build an inverse mapping from finally received kx-ky to from initial kx-ky. 
-
-The field interpolant at this parameters and inverse mapping are stored in `inverse_mapping.mat`.
-
-## read_bin
-Read the data obtained by ARPES, stored in .bin files.
-
-## tool_forward_mapping.m
-A quick script to *simulate* the received pattern with field on, from *measured* $I=0mA$ pattern. 
-
-It's using the stored field interpolant, given by `calc_inverse_mapping.m`, and the data in `fermi_surface_0mA.mat`.
-
-## tool_backward_mapping.m
-After optimizing the parameters, we can input to `tool_backward_mapping.m` another band obtained by ARPES with $I=x$ mA. It will return the corresponding band that eliminates the extrinsic field distortion. 
-
-## optimized_parameters.m
-A function that integrates the following process:
-1. Get the magnetic field on grids and build the interpolation with given parameters(translation, rotation and current).
-2. Compare the simulated fermi surface pattern with the measured fermi surface pattern. Both describe only the field effect at $I=30mA$. (since fermi surface of standard samples aren't affected by the field )
-3. Optimization to obtain the parameters that make the simulation match the best with the measured result.
-
-Therefore, using the parameters obtained to build the field, we can simulate the electrons and get the information of electrons at the surface of the material. For another unknown sample, this will remove the extrinsic effect from field on electrons, uncovering the intrinsic effect of field on material bands.
-
-## test_overall.m
-Assuming the measured fermi surface of standard sample in 0mA and 30mA are already processed and stored by `read_bin.m`, impose the overall workflow to obtain the inverse(backward) mapping function `Fkx, Fky`.
+Then, implement correction on 3D data (implement correction on each energy slice) and export the corrected bands into a .bin file.
+![](./figures/workflow2.png)
+### App1.mlapp
+All steps above can be completed in this GUI app.
+![](./figures/app_demo.png)
