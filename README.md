@@ -26,4 +26,6 @@ Then, implement correction on 3D data (implement correction on each energy slice
 ![](./figures/workflow2.png)
 ### App1.mlapp
 All steps above can be completed in this GUI app.
+Detailed instruction can be seen [here](./instruction.pdf).
 ![](./figures/app_demo.png)
+Notice: currently there is not a good method to automatically search for parameters. So try to adjust parameters manually to best fit the two corrected fermi-surface.
