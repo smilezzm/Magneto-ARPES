@@ -28,4 +28,4 @@ Then, implement correction on 3D data (implement correction on each energy slice
 All steps above can be completed in this GUI app.
 Detailed instruction can be seen [here](./instruction.pdf).
 ![](./figures/app_demo.png)
-Notice: currently there is not a good method to automatically search for parameters. So try to adjust parameters manually to best fit the two corrected fermi-surface.
+Notice: currently The way of measuring similarity is $mean(abs(A_+-A_-))$, but this needs good initial guess. We need to manually put in an initial guess so that the two corrected band already fall on the position.
