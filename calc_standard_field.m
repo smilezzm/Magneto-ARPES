@@ -122,6 +122,9 @@ function standard_field = calc_standard_field(z_target, doPlot)
     Bz = reshape(Bdata.Bz, size(Z));
 
     standard_field = struct('X', X, 'Y', Y, 'Z', Z, 'Bx', Bx, 'By', By, 'Bz', Bz);
+    if ~isfolder('./matdata')
+        mkdir('./matdata');
+    end
     save('./matdata/standard_field_withShield.mat', 'X','Y','Z','Bx','By','Bz','current','z_target');
 
     if doPlot

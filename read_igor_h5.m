@@ -32,6 +32,8 @@ function read_igor_h5(filepath, outputpath, W, H, D, W_delta, H_delta, D_delta, 
     E = W_offset + Ef + (0:double(W)-1) * W_delta;
     Tx = H_offset + (0:double(H)-1) * H_delta;
     Ty = D_offset + (0:double(D)-1) * D_delta;
+    
+    [thetax, thetay] = ndgrid(Tx, Ty);
 
     Tx_rad = deg2rad(Tx);
     Ty_rad = deg2rad(Ty);
@@ -105,7 +107,7 @@ function read_igor_h5(filepath, outputpath, W, H, D, W_delta, H_delta, D_delta, 
     addlistener(slider, 'ContinuousValueChange', @(src, event) sliderCallback(fig, src));
     
     
-    save(outputpath,'kx','ky','I_thetax_thetay','E');
+    save(outputpath,'thetax', 'thetay', 'kx','ky','I_thetax_thetay','E');
 
 end
 

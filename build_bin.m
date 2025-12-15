@@ -89,7 +89,8 @@
 % end
 
 
-function build_bin(output_binpath, measured_bands, standard_field, parameters)
+function build_bin(output_binpath, measured_bands, standard_field, parameters, ...
+    thetaxOffset, thetaxDelta, thetaxNum, thetayOffset, thetayDelta, thetayNum)
     % INPUT
     % output_binpath - path of .bin file to store the corrected bands
     % measured_bands - the struct produced by loading "3D_bands_110mA.mat"
@@ -113,14 +114,14 @@ function build_bin(output_binpath, measured_bands, standard_field, parameters)
     parameters.thetaZ = parameters.thetaZ / 180 * pi;
 
     %% Define output grid
-    params.thetax_offset = -17.9795;  % ThetaX [deg]
-    params.thetax_delta  = 0.1;
-    params.thetay_offset = -14;       % ThetaY [deg]
-    params.thetay_delta  = 0.1;
-    H = 361;   % ThetaX dimensions [-18,18]
-    D = 281;   % ThetaY dimensions [-14,14]
-    Tx = params.thetax_offset + (0:double(H)-1) * params.thetax_delta;
-    Ty = params.thetay_offset + (0:double(D)-1) * params.thetay_delta;
+    % params.thetax_offset = -17.9795;  % ThetaX [deg]
+    % params.thetax_delta  = 0.1;
+    % params.thetay_offset = -14;       % ThetaY [deg]
+    % params.thetay_delta  = 0.1;
+    H = thetaxNum;  % 361;   % ThetaX dimensions [-18,18]
+    D = thetayNum;  % 281;   % ThetaY dimensions [-14,14]
+    Tx = thetaxOffset + (0:double(H)-1) * thetaxDelta;
+    Ty = thetayOffset + (0:double(D)-1) * thetayDelta;
     [Tx, Ty] = ndgrid(Tx, Ty);
 
     %% Open binary file for writing
@@ -137,7 +138,7 @@ function build_bin(output_binpath, measured_bands, standard_field, parameters)
         measured_band.I_thetax_thetay = squeeze(measured_bands.I_thetax_thetay(ii, :, :));
         [Fkx, Fky] = calc_inverse_mapping(standard_field, energy(ii), parameters, false);
         corrected_band = backward_mapping(measured_band, Fkx, Fky, false);
-
+        
         k_mag  = sqrt(2 * me * e * energy(ii)) / hbar * 1e-10;
         thetax = asind(corrected_band.ky ./ sqrt(k_mag^2 - corrected_band.kx.^2));
         thetay = asind(corrected_band.kx ./ sqrt(k_mag^2 - corrected_band.ky.^2));
@@ -169,11 +170,11 @@ function build_bin(output_binpath, measured_bands, standard_field, parameters)
 
     %% Save metadata to companion .mat file
     metadata.dimensions = [D, H, length(energy)];  % [ThetaY, ThetaX, Energy]
-    metadata.thetax_offset = params.thetax_offset;
-    metadata.thetax_delta = params.thetax_delta;
+    metadata.thetax_offset = thetaxOffset;
+    metadata.thetax_delta = thetaxDelta;
     metadata.thetax_count = H;
-    metadata.thetay_offset = params.thetay_offset;
-    metadata.thetay_delta = params.thetay_delta;
+    metadata.thetay_offset = thetayOffset;
+    metadata.thetay_delta = thetayDelta;
     metadata.thetay_count = D;
     metadata.energy_offset = energy(1);
     metadata.energy_delta = energy(2) - energy(1);

@@ -1,23 +1,33 @@
 function parameters = optimized_parameters_dual_correction(final_measured_plus, final_measured_minus,...
-    k_r, standard_field, initial_guess, lb, ub, ax1, ax2, options)
+    k_r, standard_field, initial_guess, lb, ub, ax1, ax2, Ef, deltaE, options)
     % This function returns the parameters that make the corrected
     % fermi surface figures match the best from both measured figures, for the
     % plus field and minus field
     % Sometimes, we can fix the thetaX, thetaY, thetaZ and only tune the
-    % four left parameters.
+    % four parameters left.
+    % The final_measured_plus and final_measured_minus are .mat files that
+    % contain 3D band information
     % 
     % Inputs:
     %   - final_measured_plus: the measured fermi surface with positive field
-    %       .kx, .ky, .I_thetax_thetay
+    %       .kx, .ky, .I_thetax_thetay, .E 
+    %       [E,thetax,thetay]            [1, E]
     %   - final_measured_minus: the measured fermi surface with negative field
-    %       .kx, .ky, .I_thetax_thetay
+    %       .kx, .ky, .I_thetax_thetay, .E
     %   - k_r: the radius of k (in 1e10 m^(-1)) that we are interested at the center 
     %       In this case, from experience, k_r could be 1.1
     %   - standard_field: an object containing the standard field values on grids
     %       .Bx, .By, .Bz, .X, .Y, .Z
     %   - initial_guess: a vector [transX; transY; transZ; thetaX; thetaY; thetaZ; current]
     %   - lb, ub: lower bound and upper bound for the parameters
+    %
+    %   ANGLE ARE IN UNITS OF rad, LENGTH ARE IN UNITS OF mm, CURRENT IS IN
+    %   UNITS OF A.     So that the parameters are of similar scales
+    %
     %   - ax: the axes to which the figures are plotted
+    %   - Ef: energy of the slice which you'd like to correct
+    %   - deltaE: energy range around Ef (to take average over a few
+    %   slices), in eV
     %   - options: Provide
     %       options.free_indices to choose which of the 7 parameters are
     %       optimized (indices follow the order of the initial_guess
@@ -31,7 +41,7 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
 
     if nargin < 10
         options = struct();
-        options.method = 'delta';
+        options.similarity_method = 'delta';
     end
 
     free_idx = 1:7;
@@ -55,8 +65,14 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     param_template = initial_guess;
     
     % Extract and validate inputs
-    [kx_plus, ky_plus, intensity_plus] = extract_data(final_measured_plus);
-    [kx_minus, ky_minus, intensity_minus] = extract_data(final_measured_minus);
+    Ef_idx_plus = find(abs(final_measured_plus.E - Ef) < deltaE/2);
+    Ef_idx_minus = find(abs(final_measured_minus.E - Ef) < deltaE/2);
+    if isempty(Ef_idx_minus) | isempty(Ef_idx_plus)
+        error('please make sure there are slices in range [Ef-deltaE/2, Ef+deltaE/2]');
+    end
+
+    [kx_plus, ky_plus, intensity_plus] = extract_data(final_measured_plus, Ef_idx_plus);
+    [kx_minus, ky_minus, intensity_minus] = extract_data(final_measured_minus, Ef_idx_minus);
     validate_inputs_dual(kx_plus, ky_plus, intensity_plus, ...
                         kx_minus, ky_minus, intensity_minus);
     kx_ROI = linspace(-k_r,k_r,100);
@@ -91,7 +107,7 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
         'transX', best_p(1), 'transY', best_p(2), 'transZ', best_p(3), ...
         'thetaX', best_p(4), 'thetaY', best_p(5), 'thetaZ', best_p(6), ...
         'current', best_p(7));
-    save('./matdata/optimized_p_dual_correction.mat','parameters');
+    % save('./matdata/optimized_p_dual_correction.mat','parameters');
 
     % Visualize results
     visualize_dual_results(kx_plus, ky_plus, intensity_plus, ...
@@ -102,7 +118,7 @@ function parameters = optimized_parameters_dual_correction(final_measured_plus, 
     function p_full = expand_params(p_free)
         p_full = param_template;
         p_full(free_idx) = p_free;
-            p_full = p_full(:);
+        p_full = p_full(:);
     end
 
     function stop = outfun(p_free, optimValues, state)
@@ -130,6 +146,7 @@ function score = calc_dual_similarity_optimized(parameters, ...
         kx_minus, ky_minus, intensity_minus, ...
     field_interpolants, k_r, method)
     
+    parameters(1:3) = parameters(1:3)/1000; % convert to m
     BFcn = create_magnetic_field_function(field_interpolants, parameters);
     [Fkx_plus, Fky_plus] = inverse_mapping(BFcn);
     parameters(7) = - parameters(7);
@@ -181,9 +198,10 @@ function score = calc_similarity(kx_corrected_plus, ky_corrected_plus, intensity
         end
         I_plus_clean = I_plus_ROI_vector(valid_idx);
         I_minus_clean = I_minus_ROI_vector(valid_idx);
-        norm_I_plus = (I_plus_clean - mean(I_plus_clean)) / std(I_plus_clean);
-        norm_I_minus = (I_minus_clean - mean(I_minus_clean)) / std(I_minus_clean);
-        score = - mean(abs(norm_I_plus-norm_I_minus));
+        % norm_I_plus = (I_plus_clean - mean(I_plus_clean)) / std(I_plus_clean);
+        % norm_I_minus = (I_minus_clean - mean(I_minus_clean)) / std(I_minus_clean);
+        % score = - mean(abs(norm_I_plus-norm_I_minus));
+        score = - mean(abs(I_plus_clean - I_minus_clean));
 
     elseif strcmp(method, 'ssim')
         try
@@ -236,6 +254,8 @@ function visualize_dual_results(kx_plus, ky_plus, intensity_plus, ...
         title(ax1, 'Dual Optimization Progress');
         grid(ax1, 'on');
     end
+
+    best_p(1:3) = best_p(1:3)/1000;
     
     BFcn = create_magnetic_field_function(field_interpolants, best_p);
     [Fkx_plus, Fky_plus] = inverse_mapping(BFcn);
@@ -258,28 +278,36 @@ function visualize_dual_results(kx_plus, ky_plus, intensity_plus, ...
         intensity_minus(valid_idx), 'linear', 'none');
     intensity_minus_ROI = F_minus_ROI(kx_ROI, ky_ROI);
     valid_idx = ~isnan(intensity_plus_ROI) & ~isnan(intensity_minus_ROI);
-    scatter(ax2, kx_ROI(valid_idx), ky_ROI(valid_idx), 10, ...
-        intensity_plus_ROI(valid_idx) - intensity_minus_ROI(valid_idx), 'filled');
+
+    vals = intensity_plus_ROI(valid_idx) - intensity_minus_ROI(valid_idx);
+    scatter(ax2, kx_ROI(valid_idx), ky_ROI(valid_idx), 10, vals, 'filled');
     axis(ax2, 'equal');
     axis(ax2, 'tight');
     xlabel(ax2, 'k_x [10^{10} m^{-1}]');
     ylabel(ax2, 'k_y [10^{10} m^{-1}]');
     title(ax2, 'Difference between plus/minus-field fermi surface (plus-minus)');
-    colormap(ax2, turbo);
+    % Build a smooth colormap
+    n = 256; % number of steps in the gradient
+    blue_to_white = [linspace(0,1,n/2)' linspace(0,1,n/2)' ones(n/2,1)];
+    white_to_red   = [ones(n/2,1) linspace(1,0,n/2)' linspace(1,0,n/2)'];
+    cmap = [blue_to_white; white_to_red];
+    colormap(ax2, cmap);
+    clim(ax2, [-max(abs(vals)), max(abs(vals))]);
     colorbar(ax2);
 
     % Print final parameters
     fprintf('\nOptimized Parameters:\n');
-    fprintf('Translation: X=%.6f, Y=%.6f, Z=%.6f [m]\n', best_p(1), best_p(2), best_p(3));
+    fprintf('Translation: X=%.6f, Y=%.6f, Z=%.6f [mm]\n', best_p(1), best_p(2), best_p(3));
     fprintf('Rotation: X=%.4f, Y=%.4f, Z=%.4f [rad]\n', best_p(4), best_p(5), best_p(6));
     fprintf('Current: %.6f [A]\n', -best_p(7));
 end
 
 % Include all the helper functions from the original script
-function [kx, ky, intensity] = extract_data(data_struct)
-    kx = data_struct.kx;
-    ky = data_struct.ky;
-    intensity = double(data_struct.I_thetax_thetay);
+function [kx, ky, intensity] = extract_data(data_struct, Ef_idx)
+    intensity = double(squeeze(mean(data_struct.I_thetax_thetay(Ef_idx,:,:),1)));
+    Ef_idx = round(median(Ef_idx));
+    kx = squeeze(data_struct.kx(Ef_idx,:,:));
+    ky = squeeze(data_struct.ky(Ef_idx,:,:));
 end
 
 function k0_valid = get_valid_mask(kx_standard, ky_standard, k_mag)
@@ -363,6 +391,7 @@ end
 
 
 function BFcn = create_magnetic_field_function(field_interpolants, parameters)
+    % units of parameters: m and rad and A
     % Extract parameters
     transX = parameters(1); transY = parameters(2); transZ = parameters(3);
     thetaX = parameters(4); thetaY = parameters(5); thetaZ = parameters(6);
@@ -461,20 +490,11 @@ function options = get_optimization_options(outfun)
         'Display','iter-detailed', ...
         'OutputFcn',outfun, ...
         'MaxIterations',500, ...          % allow more iterations
-        'MaxFunctionEvaluations',4000, ...  % allow more evaluations
-        'StepTolerance',1e-9, ...         % smaller step stop criterion
-        'FunctionTolerance',1e-7, ...     % keep iterating until objective change is tiny
-        'OptimalityTolerance',1e-7, ...    % tighten first-order optimality tolerance
+        'MaxFunctionEvaluations',3000, ...  % allow more evaluations
+        'StepTolerance',1e-3, ...         % smaller step stop criterion
+        'FunctionTolerance',1e-4, ...     % keep iterating until objective change is tiny
+        'OptimalityTolerance',1e-4, ...    % tighten first-order optimality tolerance
         'UseParallel',true);
-
-% default_options = optimoptions('fmincon', ...
-%         'Display', 'iter-detailed', ...
-%         'OutputFcn', outfun, ...
-%         'MaxIterations', 500, ...
-%         'MaxFunctionEvaluations', 2000, ...
-%         'StepTolerance', 1e-8, ...
-%         'OptimalityTolerance', 1e-6, ...
-%         'UseParallel', true);
     
     options = default_options;
 end
